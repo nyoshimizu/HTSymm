@@ -81,7 +81,7 @@ class Pathset(object):
         self.make_db_node_depths()
 
     def make_db_input_pins(self):
-        """ Make database of input pins from the verilog code. """
+        """ Make database of input pins, in numerical order, from the verilog code. """
 
         filename = self.verilog_path + "/" + self.circuit + ".v"
         with open(filename, "r") as file_data:
