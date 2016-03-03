@@ -33,7 +33,10 @@
 The make_db_node_depths() method creates db_node depth, which is a dictionary of node depths of all nodes in the
 circuit.
 
-The make_db_node_values() method creates db_node_values, based on the input pin values.
+The make_db_node_values_rand() method creates db_node_values, based on the input pin values, using randomly generated
+numbers.
+
+The make_db_node_values() method creates db_node_values, based on pin values of the input pins in db_node_values.
 
 The make_db_dd_paths() method fills the variable paths with paths for determining the delay-defining path.
 
@@ -224,9 +227,9 @@ class Pathset(object):
 
         file_verilog.close()
 
-    def make_db_node_values(self, PRNG_seed, PRNG_offset_initial):
+    def make_db_node_values_rand(self, PRNG_seed, PRNG_offset_initial):
         """
-        Generate random input pin values based on PRNG_seed  and PRNG_offset_initial then determine the values
+        Generate random input pin values based on PRNG_seed and PRNG_offset_initial then determine the values
         of all nodes in the circuit
 
         PRNG_seed: Seed for PRNG
@@ -288,14 +291,62 @@ class Pathset(object):
 
         file_verilog.close()
 
+    def make_db_node_values(self):
+        """
+        Determine the value of all nodes in the circuit based on values of input pins.
+        """
+
+        self.db_init_node_values = [[j, self.db_node_values[j]]
+                                    for j in sorted(self.db_node_values, key=lambda number: int(number[1:]))
+                                    if j in self.db_input_pins]
+
+        filename = self.verilog_path + "/" + self.circuit + ".v"
+        with open(filename, "r") as filedata:
+            file_verilog = mmap.mmap(filedata.fileno(), 0, access=mmap.ACCESS_READ)
+
+        while True:
+            verilog_line = file_verilog.readline()
+            verilog_line = verilog_line.decode('ascii')
+
+            if verilog_line[0:4] in self.const_gates:
+                gate = verilog_line[0:4]
+                verilog_line = verilog_line[verilog_line.find('(')+1:verilog_line.find(')')]
+                verilog_line = verilog_line.split(', ')
+                outpin = verilog_line[0]
+                inpins = verilog_line[1:]
+
+                if any(j not in self.db_node_values for j in inpins):
+                    print("")
+                    print("Pins were not already determined when running make_db_node_values, particularly:")
+                    print([j for j in inpins if j not in self.db_node_values])
+                    print("Exiting...")
+                    print("")
+                    file_verilog.close()
+                    sys.exit()
+
+                inpins_values = {self.db_node_values[j] for j in inpins}
+                output = self.gate_output(gate, inpins_values)
+                self.db_node_values[outpin] = output
+
+            elif verilog_line == '':
+                break
+
+        if any(j not in self.db_input_pins | self.db_output_pins | self.db_node_pins for j in self.db_node_values):
+            print("")
+            print("Some nodes were not evaluated when running make_db_node_pins, namely:")
+            print([j for j in self.db_input_pins | self.db_output_pins | self.db_node_pins
+                   if j not in self.db_node_values])
+            print("Exiting..")
+            print("")
+
+        file_verilog.close()
+
     def dd_path_value(self, gate, inputs):
         """
         Calculate the input values that determine the path delay through the gate.
-
         gate: A string, which must be one of the values listed in const_gates, which is the gate being used.
         inputs: A set of  input values being applied to the gate. IT IS ASSUMED that the inputs set is a complete
         set of input values to the gate (no matter how many inputs it may have).
-
         Returns the input value through for which the input pins determine the path delay through the gate.
         """
 
@@ -468,9 +519,15 @@ class Pathset(object):
         [the delay-determinibg paths], [covered nodes] ].
         """
 
-# a = Pathset('c17', 'verilog')
-# print('---------------')
+a = Pathset('c17', 'verilog')
+print('---------------')
+# a.db_node_values['N1'] = 1
+# a.db_node_values['N2'] = 0
+# a.db_node_values['N3'] = 1
+# a.db_node_values['N6'] = 0
+# a.db_node_values['N7'] = 0
+# a.make_db_node_values()
 # print(a.db_node_values)
-# result = a.dd_paths_recursive([['N22']])
-# print(result)
-# print('---------------')
+#result = a.dd_paths_recursive([['N22']])
+#print(result)
+print('---------------')
