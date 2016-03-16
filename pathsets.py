@@ -46,6 +46,8 @@ The gate_output() determines the output given a gate type and input values
 
 The dd_path_value returns the value for which the input pins are the delay-defining paths.
 
+The path_length_T returns the path length as number of transistors for a path, which is a list of nodes.
+
 The evaluate_paths method will, once all paths have reached input pins, determine the delay-defining path(s) and the
 symmetric paths that were used, and the list of pins that were covered.
 
@@ -72,7 +74,7 @@ class Pathset(object):
         self.db_node_depths = {}
         self.db_node_values = {}
         self.db_init_node_values = []
-        self.const_gates = {'and': 'and ', 'nand': 'nand', 'or': 'or  ', 'nor': 'nor '}
+        self.const_gates = {'and': 'and ', 'nand': 'nand', 'or': 'or ', 'nor': 'nor ', 'not': 'not ', 'xor': 'xor '}
 
         self.make_db_input_pins()
         self.make_db_output_pins()
@@ -81,7 +83,7 @@ class Pathset(object):
         self.make_db_node_depths()
 
     def make_db_input_pins(self):
-        """ Make database of input pins, in numerical order, from the verilog code. """
+        """ Make database of input pins from the verilog code. """
 
         filename = self.verilog_path + "/" + self.circuit + ".v"
         with open(filename, "r") as file_data:
@@ -147,8 +149,18 @@ class Pathset(object):
                 file_verilog.close()
                 sys.exit()
 
-        verilog_line = verilog_line[verilog_line.find('N'):verilog_line.find(';')]
-        self.db_node_pins = set(verilog_line.split(','))
+        self.db_node_pins = set()
+
+        while True:
+            if ';' in verilog_line:
+                verilog_line = verilog_line[verilog_line.find('N'):verilog_line.find(';')]
+                self.db_node_pins |= set(verilog_line.split(','))
+                break
+            else:
+                verilog_line = verilog_line[verilog_line.find('N'):-3]
+                self.db_node_pins |= set(verilog_line.split(','))
+                verilog_line = file_verilog.readline()
+                verilog_line = verilog_line.decode('ascii')
 
         file_verilog.close()
 
@@ -192,7 +204,8 @@ class Pathset(object):
             verilog_line = file_verilog.readline()
             verilog_line = verilog_line.decode('ascii')
 
-            if verilog_line[0:4] in self.const_gates:
+            if verilog_line[0:4] in self.const_gates.values():
+
                 verilog_line = verilog_line[verilog_line.find('(')+1:verilog_line.find(')')]
                 verilog_line = verilog_line.split(', ')
 
@@ -201,8 +214,9 @@ class Pathset(object):
 
                 if not set(inpins).issubset(set(self.db_input_pins) | set(j[0] for j in self.db_node_depths.keys())):
                     print("")
-                    print("Pins found while creating db_node_depths that were out of order. Please check the verilog\
-                    code")
+                    print("Pins found while creating db_node_depths that were out of order. Please check the verilog" +
+                          "code")
+                    print(set(j[0] for j in self.db_node_depths.keys()))
                     print("")
                     file_verilog.close()
                     sys.exit()
@@ -227,74 +241,31 @@ class Pathset(object):
 
         file_verilog.close()
 
-    def make_db_node_values_rand(self, PRNG_seed, PRNG_offset_initial):
+    def make_db_node_values(self, initialization = 'None', PRNG_seed = 0, PRNG_offset_initial = 0):
         """
-        Generate random input pin values based on PRNG_seed and PRNG_offset_initial then determine the values
-        of all nodes in the circuit
+        Determine the value of all nodes in the circuit based on values of input pins.
 
+        If initialization parameter is empty, generate values based on existing input pin values.
+
+        If initialzation parameter is 'PRNG', generate random input pin values based on PRNG_seed and
+        PRNG_offset_initial then determine the values of all nodes in the circuit.
+
+        initialization: initialization method
         PRNG_seed: Seed for PRNG
         PRNG_offset_initial: Offset count for getting a bit from the PRNG.
         """
 
-        random.seed(PRNG_seed)
-        for j in range(PRNG_offset_initial):
-            random.getrandbits(1)
+        if initialization == 'PRNG':
 
-        input_pin_list_sorted = sorted(self.db_input_pins, key=lambda number: int(number[1:]))
+            random.seed(PRNG_seed)
+            for j in range(PRNG_offset_initial):
+                random.getrandbits(1)
 
-        self.db_node_values[input_pin_list_sorted[0]] = 0
-        for j in input_pin_list_sorted:
-            self.db_node_values[j] = random.getrandbits(1)
+            input_pin_list_sorted = sorted(self.db_input_pins, key=lambda number: int(number[1:]))
 
-        self.db_init_node_values = [[j, self.db_node_values[j]]
-                                    for j in sorted(self.db_node_values, key=lambda number: int(number[1:]))
-                                    if j in self.db_input_pins]
-
-        filename = self.verilog_path + "/" + self.circuit + ".v"
-        with open(filename, "r") as filedata:
-            file_verilog = mmap.mmap(filedata.fileno(), 0, access=mmap.ACCESS_READ)
-
-        while True:
-            verilog_line = file_verilog.readline()
-            verilog_line = verilog_line.decode('ascii')
-
-            if verilog_line[0:4] in self.const_gates:
-                gate = verilog_line[0:4]
-                verilog_line = verilog_line[verilog_line.find('(')+1:verilog_line.find(')')]
-                verilog_line = verilog_line.split(', ')
-                outpin = verilog_line[0]
-                inpins = verilog_line[1:]
-
-                if any(j not in self.db_node_values for j in inpins):
-                    print("")
-                    print("Pins were not already determined when running make_db_node_values, particularly:")
-                    print([j for j in inpins if j not in self.db_node_values])
-                    print("Exiting...")
-                    print("")
-                    file_verilog.close()
-                    sys.exit()
-
-                inpins_values = {self.db_node_values[j] for j in inpins}
-                output = self.gate_output(gate, inpins_values)
-                self.db_node_values[outpin] = output
-
-            elif verilog_line == '':
-                break
-
-        if any(j not in self.db_input_pins | self.db_output_pins | self.db_node_pins for j in self.db_node_values):
-            print("")
-            print("Some nodes were not evaluated when running make_db_node_pins, namely:")
-            print([j for j in self.db_input_pins | self.db_output_pins | self.db_node_pins
-                   if j not in self.db_node_values])
-            print("Exiting..")
-            print("")
-
-        file_verilog.close()
-
-    def make_db_node_values(self):
-        """
-        Determine the value of all nodes in the circuit based on values of input pins.
-        """
+            self.db_node_values[input_pin_list_sorted[0]] = 0
+            for j in input_pin_list_sorted:
+                self.db_node_values[j] = random.getrandbits(1)
 
         self.db_init_node_values = [[j, self.db_node_values[j]]
                                     for j in sorted(self.db_node_values, key=lambda number: int(number[1:]))
@@ -308,36 +279,41 @@ class Pathset(object):
             verilog_line = file_verilog.readline()
             verilog_line = verilog_line.decode('ascii')
 
-            if verilog_line[0:4] in self.const_gates:
-                gate = verilog_line[0:4]
+            if verilog_line[0:verilog_line.find(' ')] in self.const_gates.keys():
+                gate = verilog_line[0:verilog_line.find(' ')]
                 verilog_line = verilog_line[verilog_line.find('(')+1:verilog_line.find(')')]
                 verilog_line = verilog_line.split(', ')
                 outpin = verilog_line[0]
                 inpins = verilog_line[1:]
 
-                if any(j not in self.db_node_values for j in inpins):
-                    print("")
-                    print("Pins were not already determined when running make_db_node_values, particularly:")
-                    print([j for j in inpins if j not in self.db_node_values])
-                    print("Exiting...")
-                    print("")
+                try:
+                    inpins_values = {self.db_node_values[j] for j in inpins}
+                except KeyError:
                     file_verilog.close()
-                    sys.exit()
+                    print("Pins were not already determined when running make_db_node_values, " +
+                          "particularly: " + str([j for j in inpins if j not in self.db_node_values]) + "\n")
+                    print('Exiting...' + "\n")
 
-                inpins_values = {self.db_node_values[j] for j in inpins}
-                output = self.gate_output(gate, inpins_values)
+                try:
+                    output = self.gate_output(gate, inpins_values)
+                except KeyError:
+                    file_verilog.close()
+                    print("Unknown gate type encountered, particularly: " + gate + "\n")
+                    print("Exiting..." + "\n")
+
                 self.db_node_values[outpin] = output
 
-            elif verilog_line == '':
+            elif verilog_line[0:9] == 'endmodule':
                 break
 
-        if any(j not in self.db_input_pins | self.db_output_pins | self.db_node_pins for j in self.db_node_values):
-            print("")
-            print("Some nodes were not evaluated when running make_db_node_pins, namely:")
-            print([j for j in self.db_input_pins | self.db_output_pins | self.db_node_pins
-                   if j not in self.db_node_values])
-            print("Exiting..")
-            print("")
+        try:
+            if any(j not in self.db_input_pins | self.db_output_pins | self.db_node_pins for j in self.db_node_values):
+                file_verilog.close()
+                raise KeyError("Some nodes were not evaluated when running make_db_node_pins, namely:" +
+                               str([j for j in self.db_input_pins | self.db_output_pins | self.db_node_pins
+                                    if j not in self.db_node_values]) + "\n" + "Exiting..." + "\n")
+        finally:
+            pass
 
         file_verilog.close()
 
@@ -426,26 +402,37 @@ class Pathset(object):
         Returns the gate output value
         """
 
-        if gate == self.const_gates['and']:
+        if gate == 'and':
             if any(j == 0 for j in inputs):
                 return 0
             else:
                 return 1
-        elif gate == self.const_gates['nand']:
+        elif gate == 'nand':
             if any(j == 0 for j in inputs):
                 return 1
             else:
                 return 0
-        elif gate == self.const_gates['or']:
+        elif gate == 'or':
             if any(j == 1 for j in inputs):
                 return 1
             else:
                 return 0
-        elif gate == self.const_gates['nor']:
+        elif gate == 'nor':
             if any(j == 1 for j in inputs):
                 return 0
             else:
                 return 1
+        elif gate == 'not':
+            if any(j == 1 for j in inputs):
+                return 0
+            else:
+                return 1
+        elif gate == 'xor':
+            list_inputs = list(inputs)
+            if list_inputs[0] != list_inputs[1]:
+                return 1
+            else:
+                return 0
         else:
             print("")
             print("Unknown gates found when running gate_output, namely: ", gate, ".")
@@ -469,6 +456,34 @@ class Pathset(object):
                 branch_point = k-1
                 break
         return  branch_point
+
+    def path_length_T(self, path):
+        """
+        Determines the path length of path, which is a list of nodes, measured as number of transistors that it passes
+        through. Note that it assumes that the path through a traansistor involves a fixed number of transistors,
+        irrespective of the input or output values.
+
+        Returns a whole number reflecting the number of transistors it passes through.
+        """
+
+        path_length = 0
+        for step in range(len(path)-1):
+            output_node = path[step]
+            gate = self.db_gates[output_node][0]
+
+            if gate in {'nand', 'nor', 'xor', 'not'}:
+                path_length += 1
+            elif gate in {'and', 'or', 'buf'}:
+                path_length += 2
+            else:
+                print("")
+                print("Unknown gates found when running path_length_T, namely: ", gate, ".")
+                print("Exiting...")
+                print("")
+                sys.exit()
+
+        return path_length
+
 
     def dd_paths_recursive(self, paths):
         """
@@ -507,11 +522,11 @@ class Pathset(object):
 
             minmax = self.dd_path_minmax(self.db_gates[branch_node][0], self.db_node_values[branch_node])
             if minmax == 'min':
-                minmax = min([len(path)-1 for path in paths])
+                minmax = min([self.path_length_T(path) for path in paths])
             if minmax == 'max':
-                minmax = max([len(path)-1 for path in paths])
+                minmax = max([self.path_length_T(path) for path in paths])
 
-            return [path for path in paths if len(path) == minmax+1]
+            return [path for path in paths if self.path_length_T(path) == minmax]
 
     def results (self):
         """
@@ -519,15 +534,15 @@ class Pathset(object):
         [the delay-determinibg paths], [covered nodes] ].
         """
 
-a = Pathset('c17', 'verilog')
-print('---------------')
-# a.db_node_values['N1'] = 1
-# a.db_node_values['N2'] = 0
-# a.db_node_values['N3'] = 1
-# a.db_node_values['N6'] = 0
-# a.db_node_values['N7'] = 0
-# a.make_db_node_values()
-# print(a.db_node_values)
-#result = a.dd_paths_recursive([['N22']])
-#print(result)
-print('---------------')
+# a = Pathset('c17', 'verilog')
+# print('---------------')
+# # a.db_node_values['N1'] = 1
+# # a.db_node_values['N2'] = 0
+# # a.db_node_values['N3'] = 1
+# # a.db_node_values['N6'] = 0
+# # a.db_node_values['N7'] = 0
+# # a.make_db_node_values()
+# # print(a.db_node_values)
+# #result = a.dd_paths_recursive([['N22']])
+# #print(result)
+# print('---------------')
