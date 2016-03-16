@@ -1,6 +1,9 @@
+scriptID = '20160204'
+scriptname = 'runscript' + scriptID
+
 import pathsets
-import runscript20160204
+
+runscript = __import__(scriptname)
 
 if __name__ == "__main__":
-    runscript20160204.runscript()
-
+    runscript.runscript()
