@@ -74,7 +74,8 @@ class Pathset(object):
         self.db_node_depths = {}
         self.db_node_values = {}
         self.db_init_node_values = []
-        self.const_gates = {'and': 'and ', 'nand': 'nand', 'or': 'or ', 'nor': 'nor ', 'not': 'not ', 'xor': 'xor '}
+        self.const_gates = {'and': 'and', 'nand': 'nand', 'or': 'or', 'nor': 'nor', 'not': 'not', 'xor': 'xor',
+                            'buf': 'buf'}
 
         self.make_db_input_pins()
         self.make_db_output_pins()
@@ -204,7 +205,7 @@ class Pathset(object):
             verilog_line = file_verilog.readline()
             verilog_line = verilog_line.decode('ascii')
 
-            if verilog_line[0:4] in self.const_gates.values():
+            if verilog_line[0:verilog_line.find(' ')] in self.const_gates.values():
 
                 verilog_line = verilog_line[verilog_line.find('(')+1:verilog_line.find(')')]
                 verilog_line = verilog_line.split(', ')
@@ -216,7 +217,6 @@ class Pathset(object):
                     print("")
                     print("Pins found while creating db_node_depths that were out of order. Please check the verilog" +
                           "code")
-                    print(set(j[0] for j in self.db_node_depths.keys()))
                     print("")
                     file_verilog.close()
                     sys.exit()
@@ -323,29 +323,37 @@ class Pathset(object):
         gate: A string, which must be one of the values listed in const_gates, which is the gate being used.
         inputs: A set of  input values being applied to the gate. IT IS ASSUMED that the inputs set is a complete
         set of input values to the gate (no matter how many inputs it may have).
-        Returns the input value through for which the input pins determine the path delay through the gate.
+        Returns list of input value(s) through for which the input pins determine the path delay through the gate.
         """
 
         if gate == self.const_gates['and']:
             if any(j == 0 for j in inputs):
-                return 0
+                return [0]
             else:
-                return 1
+                return [1]
         elif gate == self.const_gates['nand']:
             if any(j == 0 for j in inputs):
-                return 0
+                return [0]
             else:
-                return 1
+                return [1]
         elif gate == self.const_gates['or']:
             if any(j == 1 for j in inputs):
-                return 1
+                return [1]
             else:
-                return 0
+                return [0]
         elif gate == self.const_gates['nor']:
             if any(j == 1 for j in inputs):
-                return 1
+                return [1]
             else:
-                return 0
+                return [0]
+        elif gate == self.const_gates['not']:
+            return [0, 1]
+        elif gate == self.const_gates['buf']:
+            return [0, 1]
+        elif gate == self.const_gates['xor']:
+            return [0, 1]
+        elif gate == self.const_gates['nor']:
+            return [0, 1]
         else:
             print("")
             print("Unknown gates found when running dd_path_value, namely: ", gate, ".")
@@ -361,7 +369,8 @@ class Pathset(object):
         gate: A string, which must be one of the values listed in const_gates, which is the gate being used.
         output: The output value of the gate.
 
-        Returns either "min" or "max," referring to the conditions described above.
+        Returns either "min" or "max," referring to the conditions described above, or "either" if it is neither e.g.
+        for a NOT gate.
         """
 
         if gate == self.const_gates['and']:
@@ -384,6 +393,11 @@ class Pathset(object):
                 return "min"
             else:
                 return "max"
+        elif gate == self.const_gates['not']:
+            return "either"
+        elif gate == self.const_gates['xor']:
+            return "either"
+
         else:
             print("")
             print("Unknown gates found when running dd_path_minmax, namely: ", gate, ".")
@@ -428,8 +442,7 @@ class Pathset(object):
             else:
                 return 1
         elif gate == 'xor':
-            list_inputs = list(inputs)
-            if list_inputs[0] != list_inputs[1]:
+            if 0 in inputs and 1 in inputs:
                 return 1
             else:
                 return 0
@@ -442,7 +455,7 @@ class Pathset(object):
 
     def branch_point(self, paths):
         """
-        Calculates the branch point among a list of paths. The branch point number of jumps between nodes until the \
+        Calculates the branch point among a list of paths. The branch point number of jumps between nodes until the
         outpin of the gate where the branch occurs is reached, i.e., paths [N1,N2,N3] and [N1,N2,N4] have a branch point
         of 1.
 
@@ -451,6 +464,7 @@ class Pathset(object):
 
         # Length of any path will work as worst-case-scenario
         branch_point = 0
+
         for k in range(len(paths[0])):
             if any(path[k] is not paths[0][k] for path in paths):
                 branch_point = k-1
@@ -460,7 +474,7 @@ class Pathset(object):
     def path_length_T(self, path):
         """
         Determines the path length of path, which is a list of nodes, measured as number of transistors that it passes
-        through. Note that it assumes that the path through a traansistor involves a fixed number of transistors,
+        through. Note that it assumes that the path through a transistor involves a fixed number of transistors,
         irrespective of the input or output values.
 
         Returns a whole number reflecting the number of transistors it passes through.
@@ -484,65 +498,106 @@ class Pathset(object):
 
         return path_length
 
-
-    def dd_paths_recursive(self, paths):
+    def dd_paths_iterative(self, paths):
         """
-        Determines recursively the path delays of delay-defining paths. For each recursion, any paths that have any
-        non-input pins should be expanded then recursively applied to this function or all paths end at input pins
-        and the min/max can be evaluated for each step.
+        Determines iteratively the paths which are the delay-defining paths. At each iteration, extend paths to the
+        same path length (using path_length_T). If any new paths terminate (i.e. reaches an input pin) evaluate to see
+        if any paths should be culled: if a pin serves a minimum condition (i.e. only one input pin is needed to drive
+        the output), then cull the other paths to that gate; if a pin serves a maximum condition (i.e. all input pins
+        are needed to drive the output), do nothing.
 
-        path: list of paths being evaluated.
+        paths: list of paths being evaluated, i.e. [['N2', 'N1'], ['N4', 'N3', 'N1'],...]. This will likely start out
+        as just an output pin. Outpins are first, then nodes that head toward the input pins.
 
-        Returns a list of either the path length (if the final pin is an input pin) or the path; the final
-        element indicates whether the "max" or "min" of the path delays should be used.
+        Returns return_paths, a list of paths which determine the path delay for the original path
         """
 
-        # All the paths that do not end in an input must be extended and recursively reevaluated
-        extend_paths = [path for path in paths if path[-1] not in self.db_input_pins]
-        result_paths = []
-        for path in extend_paths:
-            gate = self.db_gates[path[-1]][0]
-            input_pins = self.db_gates[path[-1]][1:]
-            defining_value = self.dd_path_value(gate, [self.db_node_values[j] for j in input_pins])
-            path = [path+[j] for j in self.db_gates[path[-1]][1:] if self.db_node_values[j] == defining_value]
-            result_paths += self.dd_paths_recursive(path)
-        paths = [path for path in paths if path[-1] in self.db_input_pins]
-        paths += [path for path in result_paths]
+        return_paths = []
 
-        # If all paths in paths have reached an input pin, the min/max operation can be used to reduce the list
-        if all(path[-1] in self.db_input_pins for path in paths):
-            # branch_point is the output pin at which the paths diverted at a gate, which determines whether the min
-            # delay (only one input value required) or max delay (all input values required). At each split, branch
-            # point occurs when initial segment of paths are all the same nodes.
+        path_length = 0
+        while any(path[-1] not in self.db_input_pins for path in paths):
+            # Extend all paths by the minimum amount and find minimum new path length
+            new_path_delay_min = 999999999
+            for path in paths:
+                new_output_pin = path[-1]
+                new_input_pins = self.db_gates[new_output_pin][1:]
 
-            # Length of any path will work as worst-case-scenario
-            branch_point = self.branch_point(paths)
+                for new_input_pin in new_input_pins:
+                    new_path_delay = self.path_length_T(path+[new_input_pin])
 
-            branch_node = paths[0][branch_point]
+                    if new_path_delay < new_path_delay_min:
+                        new_path_delay_min = new_path_delay
+                        if new_path_delay == path_length + 1:
+                            break
 
-            minmax = self.dd_path_minmax(self.db_gates[branch_node][0], self.db_node_values[branch_node])
-            if minmax == 'min':
-                minmax = min([self.path_length_T(path) for path in paths])
-            if minmax == 'max':
-                minmax = max([self.path_length_T(path) for path in paths])
+            # Extend all paths that will increase its delay to new_path_delay_min, and cull unnecessary paths.
+            # If at least one path terminates at an input pin, paths can be culled using the following criteria. If the
+            # gate is subject to path delay minimums, then the terminated path should be a minimum path and other paths
+            # can be culled. If the gate is subject to path delay maximums, then the non-terminated paths will have
+            # larger path delays and the terminated paths can be culled.
+            #
+            # For minmax = "min", if any of the pins is an input pin and of path delay equal to new_path_delay_min,
+            # keep only the paths with the input pin.
+            # For minmax = "max", if any of the pins is an input pin and of path delay equal to new_path_delay_min,
+            # cull the paths with the input pin and keep the rest, unless they are all input pins.
+            # Otherwise, keep all paths.
+            # Note that "special_pins" are pins that are input pins and of path delay equal to new_path_delay_min.
 
-            return [path for path in paths if self.path_length_T(path) == minmax]
+            new_paths = []
+
+            # Go through each node and recreate the list of paths, except those which should be culled.
+            for path in paths:
+                output_pin = path[-1]
+                input_pins = self.db_gates[output_pin][1:]
+                input_values = [self.db_node_values[pin] for pin in input_pins]
+                gate = self.db_gates[output_pin][0]
+                output_value = self.db_node_values[output_pin]
+                min_max = self.dd_path_minmax(gate, output_value)
+
+                # Keep paths that are path-defining
+                dd_value = self.dd_path_value(gate, input_values)
+                input_pins = [pin for pin in input_pins if self.db_node_values[pin] in dd_value]
+
+                # Make list of pins that are input pins and have delay equal to new_path_delay
+                special_pins = []
+                for pin in input_pins:
+                    if pin in self.db_input_pins and self.path_length_T([path+[pin]]) == path_length:
+                        special_pins += [pin]
+
+                if any(special_pins):
+                    if min_max == "min":
+                        for input_pin in special_pins:
+                            new_paths += [path+[input_pin]]
+                    elif min_max == "max":
+                        for input_pin in input_pins:
+                            if input_pin not in special_pins:
+                                new_paths += [path+[input_pin]]
+                        # All pins are input pins and are therefore max path delay.
+                        if not any(new_paths):
+                            for input_pin in input_pins:
+                                new_paths += [path+[input_pin]]
+
+                    if min_max == "either":
+                        for input_pin in input_pins:
+                            new_paths += [path+[input_pin]]
+
+                else:
+                    for input_pin in input_pins:
+                        new_paths += [path+[input_pin]]
+
+            # Replace paths with newly generated new_paths. If paths end on an input pin, they should have been vetted:
+            # pass on to return_paths.
+            paths = []
+            for path in new_paths:
+                if path[-1] in self.db_input_pins:
+                    return_paths += [path]
+                else:
+                    paths += [path]
+
+        return return_paths
 
     def results (self):
         """
         Returns a set list of results: [ the output pin, the value of the output pin, max/min requirement,
         [the delay-determinibg paths], [covered nodes] ].
         """
-
-# a = Pathset('c17', 'verilog')
-# print('---------------')
-# # a.db_node_values['N1'] = 1
-# # a.db_node_values['N2'] = 0
-# # a.db_node_values['N3'] = 1
-# # a.db_node_values['N6'] = 0
-# # a.db_node_values['N7'] = 0
-# # a.make_db_node_values()
-# # print(a.db_node_values)
-# #result = a.dd_paths_recursive([['N22']])
-# #print(result)
-# print('---------------')
