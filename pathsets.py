@@ -664,6 +664,64 @@ class Pathset(object):
 
     def write_results(self):
         """
-        Write results to file. The results s
-        :return:
+        Write results to file. The results are saved to ..\results and a name of the form c17_results.txt.
+        File is written as a text file with the following format:
+
+        input list: N1, N2, N3, N6, N7
+
+        input: 10010
+        output: N23, 0
+        path length: 2
+        min/max: max
+        covered nodes: N2, N7, N16, N19, N23
+        paths:
+        N23, N16, N2
+        N23, N19, N7
+
+        It will first search through the file to see if any of the results are already saved. It will only save the
+        results that are not already written to file.
         """
+
+        # Make list of results that should be saved
+        file_results = open('results/' + self.circuit + '_results.txt', "r")
+
+        results_written = []
+        file_line = file_results.readline()
+
+        if file_line[:11] != 'input list:':
+            file_results.close()
+
+            input_pin_list_sorted = sorted(self.db_input_pins, key=lambda number: int(number[1:]))
+            file_results = open('results/' + self.circuit + '_results.txt', "a+")
+            file_results.write('input list: ' + ','.join(pin for pin in input_pin_list_sorted) + '\n' + '\n')
+            file_results.close()
+            file_results = open('results/' + self.circuit + '_results.txt', "r")
+            file_line = file_results.readline()
+
+        while True:
+            file_line = file_results.readline()
+
+            if file_line[:6] == 'input:':
+                results_written += [file_line[7:-1]]
+
+            if not file_line:
+                break
+
+        file_results.close()
+
+        file_results = open('results/' + self.circuit + '_results.txt', "a+")
+
+        # Save results to file
+        for result in self.db_results:
+            if result[0] not in results_written:
+                file_results.write('input: ' + result[0] + '\n')
+                file_results.write('output: ' + result[1] + ', ' + str(result[2]) + '\n')
+                file_results.write('min/max: ' + result[3] + '\n')
+                file_results.write('path length: ' + str(result[4]) + '\n')
+                file_results.write('covered nodes: ' + ','.join(pin for pin in result[6]) + '\n')
+                file_results.write('paths: \n')
+                for path in result[5]:
+                    file_results.write(','.join(pin for pin in path) + '\n')
+                file_results.write('\n')
+
+        file_results.close()
