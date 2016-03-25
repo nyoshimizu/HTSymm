@@ -268,8 +268,8 @@ class Pathset(object):
         if initialization == 'PRNG':
 
             random.seed(PRNG_seed)
-            for j in range(PRNG_offset_initial):
-                random.getrandbits(1)
+            if PRNG_offset_initial * len(self.db_input_pins) > 0:
+                random.getrandbits(PRNG_offset_initial * len(self.db_input_pins))
 
             input_pin_list_sorted = sorted(self.db_input_pins, key=lambda number: int(number[1:]))
 
@@ -517,7 +517,7 @@ class Pathset(object):
         are needed to drive the output), do nothing.
 
         paths: list of paths being evaluated, i.e. [['N2', 'N1'], ['N4', 'N3', 'N1'],...]. This will likely start out
-        as just an output pin. Outpins are first, then nodes that head toward the input pins.
+        as just an output pin. Output pins are first, then nodes that head toward the input pins.
 
         Add result to db_results.
         """
@@ -564,7 +564,7 @@ class Pathset(object):
                 output_value = self.db_node_values[output_pin]
                 min_max = self.dd_path_minmax(gate, output_value)
 
-                # Keep paths that are path-defining
+                # Keep paths that are delay-defining
                 dd_value = self.dd_path_value(gate, input_values)
                 input_pins = [pin for pin in input_pins if self.db_node_values[pin] in dd_value]
 
@@ -610,7 +610,8 @@ class Pathset(object):
         for k in input_pin_list_sorted:
             input_string += str(self.db_node_values[k])
 
-        if not any([result for result in self.db_results if result[0] == input_string]):
+        if not any([result for result in self.db_results if result[0] == input_string
+                    and result[1] == save_paths[0][0]]):
             db_results_entry = []
             # 0. Save input pin value string, ordered from smallest pin number to largest pin number
             db_results_entry += [input_string]
