@@ -465,9 +465,9 @@ class Pathset(object):
 
     def branch_point(self, paths):
         """
-        Calculates the branch point among a list of paths. The branch point number of jumps between nodes until the
-        outpin of the gate where the branch occurs is reached, i.e., paths [N1,N2,N3] and [N1,N2,N4] have a branch point
-        of 1.
+        Calculates the branch point among a list of paths. The branch point is the number of jumps between nodes until
+        the outpin of the gate where the branch occurs is reached, i.e., paths [N1,N2,N3] and [N1,N2,N4] have a branch
+        point of 1.
 
         paths: list of paths being evaluated
         """
@@ -526,6 +526,7 @@ class Pathset(object):
 
         path_length = 0
         while any(path[-1] not in self.db_input_pins for path in paths):
+
             # Extend all paths by the minimum amount and find minimum new path length
             new_path_delay_min = 999999999
             for path in paths:
@@ -558,22 +559,23 @@ class Pathset(object):
             # Go through each node and recreate the list of paths, except those which should be culled.
             for path in paths:
                 output_pin = path[-1]
+                output_value = self.db_node_values[output_pin]
+                gate = self.db_gates[output_pin][0]
                 input_pins = self.db_gates[output_pin][1:]
                 input_values = [self.db_node_values[pin] for pin in input_pins]
-                gate = self.db_gates[output_pin][0]
-                output_value = self.db_node_values[output_pin]
                 min_max = self.dd_path_minmax(gate, output_value)
 
-                # Keep paths that are delay-defining
+                # Keep paths that are delay-defining and remove others
                 dd_value = self.dd_path_value(gate, input_values)
                 input_pins = [pin for pin in input_pins if self.db_node_values[pin] in dd_value]
 
-                # Make list of pins that are input pins and have delay equal to new_path_delay
+                # Make a list of pins that are input pins and have delay equal to new_path_delay, i.e. special
                 special_pins = []
                 for pin in input_pins:
                     if pin in self.db_input_pins and self.path_length_T([path+[pin]]) == path_length:
                         special_pins += [pin]
 
+                # If special pins exist, paths can be culled based on min/max condition
                 if any(special_pins):
                     if min_max == "min":
                         for input_pin in special_pins:
@@ -586,14 +588,73 @@ class Pathset(object):
                         if not any(new_paths):
                             for input_pin in input_pins:
                                 new_paths += [path+[input_pin]]
-
-                    if min_max == "either":
+                    elif min_max == "either":
                         for input_pin in input_pins:
                             new_paths += [path+[input_pin]]
-
                 else:
                     for input_pin in input_pins:
                         new_paths += [path+[input_pin]]
+
+            # Go through paths in paths and saved_paths to make a list of cull paths that are unnecessary due to min/max
+            # conditions. Branch points are found as changes in the number of universal appearances of a node along a
+            # single path.
+
+            # Calculate universal number of occurrences of all nodes
+            node_occurrence = {}
+            for path in new_paths + save_paths:
+                for pin in path:
+                    if pin in node_occurrence:
+                        node_occurrence[pin] += 1
+                    else:
+                        node_occurrence[pin] = 1
+
+            # Determine branch nodes
+            branch_nodes = []
+            for path in new_paths + save_paths:
+                sum_node_occurrence = 1
+                for pin in reversed(path):
+                    if node_occurrence[pin] > sum_node_occurrence:
+                        if pin not in branch_nodes:
+                            branch_nodes += [pin]
+                        sum_node_occurrence = node_occurrence[pin]
+
+            # For each branch node, go through any relevant paths and determine if they can be culled based on min/max
+            # condition
+
+            temp_cull_paths = []
+
+            for branch_node in branch_nodes:
+                temp_cull_paths = []
+                minmax = self.dd_path_minmax(self.db_gates[branch_node][0], self.db_node_values[branch_node])
+                if minmax == "max":
+                    max_path_delay = 0
+                    for path in new_paths+save_paths:
+                        if branch_node in path:
+                            branch_point = self.branch_point(path)
+                            if self.path_length_T(path[branch_point:]) > max_path_delay:
+                                max_path_delay = self.path_length_T(path[branch_point:])
+                    for path in new_paths+save_paths:
+                        if branch_node in path:
+                            branch_point = self.branch_point(path)
+                            if self.path_length_T(path[branch_point:]) < max_path_delay:
+                                temp_cull_paths += [path]
+                elif minmax == "min":
+                    min_path_delay = 999999999999
+                    for path in new_paths+save_paths:
+                        if branch_node in path:
+                            branch_point = self.branch_point(path)
+                            if self.path_length_T(path[branch_point:]) < min_path_delay:
+                                min_path_delay = self.path_length_T(path[branch_point:])
+                    for path in new_paths+save_paths:
+                        if branch_node in path:
+                            branch_point = self.branch_point(path)
+                            if self.path_length_T(path[branch_point:]) > min_path_delay:
+                                temp_cull_paths += [path]
+
+            # Remove cull paths from new_paths
+            new_paths = [path for path in new_paths if path not in temp_cull_paths]
+            # Remove cull paths from save_paths
+            save_paths = [path for path in save_paths if path not in temp_cull_paths]
 
             # Replace paths with newly generated new_paths. If paths end on an input pin, they should have been vetted:
             # pass on to save_paths.
@@ -610,8 +671,8 @@ class Pathset(object):
         for k in input_pin_list_sorted:
             input_string += str(self.db_node_values[k])
 
-        if not any([result for result in self.db_results if result[0] == input_string
-                    and result[1] == save_paths[0][0]]):
+        if not any([result for result in self.db_results if result[0] == input_string and
+                    result[1] == save_paths[0][0]]):
             db_results_entry = []
             # 0. Save input pin value string, ordered from smallest pin number to largest pin number
             db_results_entry += [input_string]
