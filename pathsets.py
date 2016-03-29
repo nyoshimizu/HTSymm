@@ -614,47 +614,63 @@ class Pathset(object):
                 sum_node_occurrence = 1
                 for pin in reversed(path):
                     if node_occurrence[pin] > sum_node_occurrence:
-                        if pin not in branch_nodes:
+                        if pin not in branch_nodes and pin not in self.db_input_pins:
                             branch_nodes += [pin]
                         sum_node_occurrence = node_occurrence[pin]
+
+            # Order branch nodes in reverse order, starting farthest from the output pin in path delay. Branch nodes
+            # that are closes to the output pin are evaluated last. Do so by reverse ordering branch nodes by their
+            # node occurrence calculated above.
+
+            branch_nodes = sorted(branch_nodes, key=lambda node: node_occurrence[node])
 
             # For each branch node, go through any relevant paths and determine if they can be culled based on min/max
             # condition
 
-            temp_cull_paths = []
+            max_path_delay = 0
 
+            temp_cull_paths = []
             for branch_node in branch_nodes:
-                temp_cull_paths = []
+
+                # print('branch node: ', branch_node)
                 minmax = self.dd_path_minmax(self.db_gates[branch_node][0], self.db_node_values[branch_node])
+
                 if minmax == "max":
                     max_path_delay = 0
                     for path in new_paths+save_paths:
                         if branch_node in path:
-                            branch_point = self.branch_point(path)
+                            branch_point = path.index(branch_node)
                             if self.path_length_T(path[branch_point:]) > max_path_delay:
                                 max_path_delay = self.path_length_T(path[branch_point:])
+                                # print('!!!max', path, '-', max_path_delay)
                     for path in new_paths+save_paths:
                         if branch_node in path:
-                            branch_point = self.branch_point(path)
+                            branch_point = path.index(branch_node)
                             if self.path_length_T(path[branch_point:]) < max_path_delay:
                                 temp_cull_paths += [path]
+                                # print('cull max', max_path_delay, ' ', self.path_length_T(path[branch_point:]))
+                                # print(path)
                 elif minmax == "min":
                     min_path_delay = 999999999999
                     for path in new_paths+save_paths:
                         if branch_node in path:
-                            branch_point = self.branch_point(path)
+                            branch_point = path.index(branch_node)
                             if self.path_length_T(path[branch_point:]) < min_path_delay:
                                 min_path_delay = self.path_length_T(path[branch_point:])
+                                # print('!!!min', path, '-', min_path_delay)
                     for path in new_paths+save_paths:
                         if branch_node in path:
-                            branch_point = self.branch_point(path)
+                            branch_point = path.index(branch_node)
                             if self.path_length_T(path[branch_point:]) > min_path_delay:
                                 temp_cull_paths += [path]
+                                # print('cull min', min_path_delay, ' ', self.path_length_T(path[branch_point:]))
+                                # print(path)
 
-            # Remove cull paths from new_paths
-            new_paths = [path for path in new_paths if path not in temp_cull_paths]
-            # Remove cull paths from save_paths
-            save_paths = [path for path in save_paths if path not in temp_cull_paths]
+                # Remove cull paths from new_paths
+                new_paths = [path for path in new_paths if path not in temp_cull_paths]
+
+                # Remove cull paths from save_paths
+                save_paths = [path for path in save_paths if path not in temp_cull_paths]
 
             # Replace paths with newly generated new_paths. If paths end on an input pin, they should have been vetted:
             # pass on to save_paths.
@@ -711,6 +727,8 @@ class Pathset(object):
             covered_nodes = [node for path in result for node in path]
         if minmax == "min":
             covered_nodes = [node for path in result for node in path[branch_point:]]
+        if minmax == "either":
+            covered_nodes = [node for path in result for node in path]
         covered_nodes = sorted(list(set(covered_nodes)), key=lambda number: int(number[1:]))
         minmax = result[0]
 
