@@ -1,3 +1,10 @@
+"""
+    This script will generate results for an random set of input values.
+
+    Order of input values applied is for pins [N1, N2, N5, ...] and inputs are [0, 0, 0, .. ], [1, 0, 0, ...], to
+    [1, 1, 1, ...].
+"""
+
 import pathsets
 
 def runscript():
@@ -12,6 +19,7 @@ def runscript():
         print("")
         print('========================')
         print(PRNG, '/', PRNG_num)
+
         cake.make_db_node_values('PRNG', PRNG_seed, PRNG+PRNG_offset)
 
         input_pin_list_sorted = sorted(cake.db_input_pins, key=lambda number: int(number[1:]))
