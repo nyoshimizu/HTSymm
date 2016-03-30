@@ -12,7 +12,7 @@ import math
 
 def runscript():
 
-    circuit = 'c432'
+    circuit = 'c17'
     cake = pathsets.Pathset(circuit, 'verilog')
     # Save the pathlengths of each output pin, then final element is the set of input values
     results = []
@@ -34,11 +34,10 @@ def runscript():
         input_string = ''
         for k in input_pin_list_sorted:
             input_string += str(cake.db_node_values[k])
+        print('Input pins: ', input_pin_list_sorted)
         print('Input: ', input_string)
 
-        print(len(input_pin_list_sorted))
-
-        for outputpin in cake.db_output_pins:
+        for outputpin in output_pin_list_sorted:
             result = cake.dd_paths_iterative([[outputpin]])
             branch_point = cake.branch_point(result)
             branch_node = result[0][branch_point]
@@ -53,6 +52,14 @@ def runscript():
             for k in range(len(output_pin_list_sorted)):
                 if outputpin == output_pin_list_sorted[k]:
                     results[k][1].append(pathlength)
+
+            print('Outpin: ', outputpin)
+            print('Output value: ', cake.db_node_values[outputpin])
+            print(result)
+            print('Path length in transistors: ', cake.path_length_T(result[-1]))
+            # print('Covered: ', covered_nodes)
+            # input('waiting..')
+            print('')
 
     file_results = open('results/' + circuit + '_results.txt', "a+")
 
