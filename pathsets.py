@@ -722,26 +722,6 @@ class Pathset(object):
         if not any([result for result in self.db_results if result.input_string == input_string and
                     result.output_pin == save_paths[0][0]]):
 
-            # db_results_entry = []
-            # # 0. Save input pin value string, ordered from smallest pin number to largest pin number
-            # db_results_entry += [input_string]
-            # # 1. Save output pin
-            # db_results_entry += [save_paths[0][0]]
-            # # 2. Save output pin value
-            # db_results_entry += [self.db_node_values[save_paths[0][0]]]
-            # # 3. Save max/min/either condition
-            # branch_point = self.branch_point(save_paths)
-            # branch_node = save_paths[0][branch_point]
-            # minmax = self.dd_path_minmax(self.db_gates[branch_node].gate, self.db_node_values[branch_node])
-            # db_results_entry += [minmax]
-            # # 4. Save path delay
-            # db_results_entry += [self.path_length_T(save_paths[-1])]
-            # # 5. Save list of delay-defining paths
-            # db_results_entry += [save_paths]
-            # # 6. Save list of covered nodes
-            # self.covered_nodes(save_paths)
-            # db_results_entry += [self.db_covered_nodes]
-
             db_results_entry = self.db_result('', '', '', '', '', [], [])
 
             db_results_entry.input_string = input_string
