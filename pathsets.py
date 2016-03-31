@@ -85,6 +85,16 @@ class Pathset(object):
             self.gate = gate
             self.input_pins = input_pins
 
+    class db_result(object):
+
+        def __init__(self, input_string, output_pin, output_pin_value, minmax, path_delay, paths, covered_nodes):
+            self.input_string = input_string
+            self.output_pin = output_pin
+            self.output_pin_value = output_pin_value
+            self.minmax = minmax
+            self.path_delay = path_delay
+            self.paths = paths
+            self.covered_nodes = covered_nodes
 
     def __init__(self, circuit, verilog_path):
         """ Return a new Pathset object. Initialize the set of paths. """
@@ -211,7 +221,6 @@ class Pathset(object):
                 verilog_line = verilog_line.split(', ')
                 outpin = verilog_line[0]
                 inpin = verilog_line[1:]
-                # self.db_gates[outpin] = [gate]+inpin
                 self.db_gates[outpin] = self.db_gate(gate, inpin)
 
             elif verilog_line == "":
@@ -710,27 +719,48 @@ class Pathset(object):
         for k in input_pin_list_sorted:
             input_string += str(self.db_node_values[k])
 
-        if not any([result for result in self.db_results if result[0] == input_string and
-                    result[1] == save_paths[0][0]]):
-            db_results_entry = []
-            # 0. Save input pin value string, ordered from smallest pin number to largest pin number
-            db_results_entry += [input_string]
-            # 1. Save output pin
-            db_results_entry += [save_paths[0][0]]
-            # 2. Save output pin value
-            db_results_entry += [self.db_node_values[save_paths[0][0]]]
-            # 3. Save max/min/either condition
+        if not any([result for result in self.db_results if result.input_string == input_string and
+                    result.output_pin == save_paths[0][0]]):
+
+            # db_results_entry = []
+            # # 0. Save input pin value string, ordered from smallest pin number to largest pin number
+            # db_results_entry += [input_string]
+            # # 1. Save output pin
+            # db_results_entry += [save_paths[0][0]]
+            # # 2. Save output pin value
+            # db_results_entry += [self.db_node_values[save_paths[0][0]]]
+            # # 3. Save max/min/either condition
+            # branch_point = self.branch_point(save_paths)
+            # branch_node = save_paths[0][branch_point]
+            # minmax = self.dd_path_minmax(self.db_gates[branch_node].gate, self.db_node_values[branch_node])
+            # db_results_entry += [minmax]
+            # # 4. Save path delay
+            # db_results_entry += [self.path_length_T(save_paths[-1])]
+            # # 5. Save list of delay-defining paths
+            # db_results_entry += [save_paths]
+            # # 6. Save list of covered nodes
+            # self.covered_nodes(save_paths)
+            # db_results_entry += [self.db_covered_nodes]
+
+            db_results_entry = self.db_result('', '', '', '', '', [], [])
+
+            db_results_entry.input_string = input_string
+
+            db_results_entry.output_pin = save_paths[0][0]
+
+            db_results_entry.output_pin_value = self.db_node_values[save_paths[0][0]]
+
             branch_point = self.branch_point(save_paths)
             branch_node = save_paths[0][branch_point]
             minmax = self.dd_path_minmax(self.db_gates[branch_node].gate, self.db_node_values[branch_node])
-            db_results_entry += [minmax]
-            # 4. Save path delay
-            db_results_entry += [self.path_length_T(save_paths[-1])]
-            # 5. Save list of delay-defining paths
-            db_results_entry += [save_paths]
-            # 6. Save list of covered nodes
+            db_results_entry.minmax = minmax
+
+            db_results_entry.path_delay = self.path_length_T(save_paths[-1])
+
+            db_results_entry.paths = save_paths
+
             self.covered_nodes(save_paths)
-            db_results_entry += [self.db_covered_nodes]
+            db_results_entry.covered_nodes = self.db_covered_nodes
 
             self.db_results += [db_results_entry]
 
@@ -816,14 +846,14 @@ class Pathset(object):
 
         # Save results to file
         for result in self.db_results:
-            if result[0] not in results_written:
-                file_results.write('input: ' + result[0] + '\n')
-                file_results.write('output: ' + result[1] + ', ' + str(result[2]) + '\n')
-                file_results.write('min/max: ' + result[3] + '\n')
-                file_results.write('path length: ' + str(result[4]) + '\n')
-                file_results.write('covered nodes: ' + ','.join(pin for pin in result[6]) + '\n')
+            if result.input_string not in results_written:
+                file_results.write('input: ' + result.input_string + '\n')
+                file_results.write('output: ' + result.output_pin + ', ' + str(result.output_pin_value) + '\n')
+                file_results.write('min/max: ' + result.minmax + '\n')
+                file_results.write('path length: ' + str(result.path_delay) + '\n')
+                file_results.write('covered nodes: ' + ','.join(pin for pin in result.covered_nodes) + '\n')
                 file_results.write('paths: \n')
-                for path in result[5]:
+                for path in result.paths:
                     file_results.write(','.join(pin for pin in path) + '\n')
                 file_results.write('\n')
 
