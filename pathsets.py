@@ -32,9 +32,9 @@
 
         db_covered_nodes: A list of covered nodes.
 
-        db_results: A list of results generated of the form, [[result1], [result2], ...]. Each [result] is of the
-        form, [input_string, output pin, output pin value, min/max/either condition, path delay,
-        list of delay-defining paths, list of covered nodes]
+        db_results: A list of results generated of the form, [result1, result2, ...]. Each class result contains
+        objects: input_string, output pin, output pin value, min/max/either condition, path delay,
+        list of delay-defining paths, list of covered nodes.
 
         db_mods_circuit: A list of modifications made to the original circuit. It is assumed tha the modification occurs
         where a gate is inserted at a node. Each element is of the form
@@ -76,7 +76,6 @@ import mmap
 import random
 
 
-
 class Pathset(object):
 
     class db_gate(object):
@@ -84,6 +83,9 @@ class Pathset(object):
         def __init__(self, gate, input_pins):
             self.gate = gate
             self.input_pins = input_pins
+
+        def __str__(self):
+            return "[%s, [%s]]" % (self.gate, ', '.join([pin for pin in self.input_pins]))
 
     class db_result(object):
 
@@ -95,6 +97,19 @@ class Pathset(object):
             self.path_delay = path_delay
             self.paths = paths
             self.covered_nodes = covered_nodes
+
+    class mods(object):
+
+        def __init__(self):
+            self.mod_num = 0
+            self.array = []
+
+        class db_mod(object):
+
+            def __init__(self, original_pin, input_pins, gate):
+                self.original_pin = original_pin
+                self.input_pins = input_pins
+                self.gate = gate
 
     def __init__(self, circuit, verilog_path):
         """ Return a new Pathset object. Initialize the set of paths. """
@@ -115,7 +130,7 @@ class Pathset(object):
         self.const_gates = {'and': 'and', 'nand': 'nand', 'or': 'or', 'nor': 'nor', 'not': 'not', 'xor': 'xor',
                             'buf': 'buf'}
 
-        self.db_mods_circuit = []
+        self.db_mods_circuit = self.mods()
 
         self.make_db_input_pins()
         self.make_db_output_pins()
@@ -839,42 +854,34 @@ class Pathset(object):
 
         file_results.close()
 
-    # def mod_insert(self):
-    #     """
-    #     Modify db_input_pins, db_output_pins, db_node_pins, and db_gates then rerun self.make_db_node_depths() to
-    #     insert the circuit mods based on db_mods_circuit. db_mods_circuit is a list with elements of modifications of
-    #     the form,
-    #     [original pin, [pins to other inputs of inserted gate], gate type as string]
-    #
-    #     Let added pins be numbered as M1, M2, ...
-    #     """
-    #
-    #     mod_num = 0
-    #
-    #
-    #     for mod in self.db_mods_circuit:
-    #
-    #         mod_num += 1
-    #
-    #         mod_original_pin = mod[0]
-    #         mod_input_pins = mod[1]
-    #         mod_gate = mod[2]
-    #         mod_new_pin_name = 'M'+str(mod_num)
-    #
-    #         self.db_node_pins += mod_new_pin_name
-    #
-    #         if mod_original_pin in self.db_node_pins:
-    #
-    #             for output_pin in self.db_gates:
-    #                 # De-link old pin from gate inputs
-    #                 input_pins = self.db_gates[output_pin][1:]
-    #                 if mod_original_pin in input_pins:
-    #                     self.db_gates[output_pin][1] = [pin for pin in self.db_gates[output_pin][1] if
-    #                                                      pin != mod_original_pin] + [mod_new_pin_name]
-    #             # Link mod gate between mod new pin and original pin and mod input pins
-    #             self.db_gates[mod_new_pin_name] = [mod_gate, [mod_original_pin]+mod_input_pins]
-    #
-    #         if mod_original_pin in self.db_output_pins:
-    #
-    #             self.db_gates[mod_new_pin_name] = self.db_gates[mod_original_pin]
-    #             self.db_gates[mod_original_pin] = [mod_gate, [mod_new_pin_name]+mod_input_pins]
+    def mod_insert(self):
+        """
+        Modify db_input_pins, db_output_pins, db_node_pins, and db_gates then rerun self.make_db_node_depths() to
+        insert the circuit mods based on db_mods_circuit. db_mods_circuit is a list with elements of modifications of
+        the form,
+        [original pin, [pins to other inputs of inserted gate], gate type as string]
+
+        Let added pins be numbered as M1, M2, ...
+        """
+
+        for mod in self.db_mods_circuit.array:
+
+            self.db_mods_circuit.mod_num += 1
+
+            mod_new_pin_name = 'M'+str(self.db_mods_circuit.mod_num)
+            self.db_node_pins |= set(mod_new_pin_name)
+
+            if mod.original_pin in self.db_node_pins|self.db_input_pins:
+                for output_pin in self.db_gates:
+                    # De-link old pin from any gate inputs
+                    input_pins = self.db_gates[output_pin].input_pins
+                    if mod.original_pin in input_pins:
+                        self.db_gates[output_pin].input_pins = [pin for pin in self.db_gates[output_pin].input_pins if
+                                                         pin != mod.original_pin] + [mod_new_pin_name]
+                # Link mod gate between mod new pin (as output) and original pin and mod input pins (as inputs)
+                self.db_gates[mod_new_pin_name] = [mod.gate, [mod.original_pin]+[mod.input_pins]]
+
+            if mod.original_pin in self.db_output_pins:
+
+                self.db_gates[mod.new_pin_name] = self.db_gates[mod.original_pin]
+                self.db_gates[mod.original_pin] = self.db_gate(mod.gate, [mod_new_pin_name]+mod.input_pins)
