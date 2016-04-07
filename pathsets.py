@@ -25,6 +25,7 @@
         a gate type and the input pins.
 
         db_node_depths: A dictionary of node depths, index by a 2tuple of (node, inputpin): {depth(s)}. Note that
+
         multiple path lengths between a node and an input pin are only recorded once, becaause it is saved as a
         set, not a list.
 
@@ -110,6 +111,12 @@ class Pathset(object):
                 self.original_pin = original_pin
                 self.input_pins = input_pins
                 self.gate = gate
+
+        def reset(self):
+            self.mod_num = 0
+            self.array = []
+
+
 
     def __init__(self, circuit, verilog_path):
         """ Return a new Pathset object. Initialize the set of paths. """
@@ -856,32 +863,78 @@ class Pathset(object):
 
     def mod_insert(self):
         """
-        Modify db_input_pins, db_output_pins, db_node_pins, and db_gates then rerun self.make_db_node_depths() to
-        insert the circuit mods based on db_mods_circuit. db_mods_circuit is a list with elements of modifications of
-        the form,
+        Modify db_input_pins, db_output_pins, db_node_pins, and db_gates then to insert the circuit mods based on
+        db_mods_circuit. db_mods_circuit is a list with elements of modifications of the form,
+
         [original pin, [pins to other inputs of inserted gate], gate type as string]
 
         Let added pins be numbered as M1, M2, ...
         """
 
-        for mod in self.db_mods_circuit.array:
+        # Only add mods that have not already been added
+        for mod in self.db_mods_circuit.array[self.db_mods_circuit.mod_num:]:
 
             self.db_mods_circuit.mod_num += 1
 
             mod_new_pin_name = 'M'+str(self.db_mods_circuit.mod_num)
             self.db_node_pins |= set(mod_new_pin_name)
 
-            if mod.original_pin in self.db_node_pins|self.db_input_pins:
+            if mod.original_pin in self.db_node_pins | self.db_input_pins:
                 for output_pin in self.db_gates:
                     # De-link old pin from any gate inputs
                     input_pins = self.db_gates[output_pin].input_pins
                     if mod.original_pin in input_pins:
                         self.db_gates[output_pin].input_pins = [pin for pin in self.db_gates[output_pin].input_pins if
-                                                         pin != mod.original_pin] + [mod_new_pin_name]
+                                                                pin != mod.original_pin] + [mod_new_pin_name]
                 # Link mod gate between mod new pin (as output) and original pin and mod input pins (as inputs)
                 self.db_gates[mod_new_pin_name] = [mod.gate, [mod.original_pin]+[mod.input_pins]]
 
             if mod.original_pin in self.db_output_pins:
+                self.db_gates[mod_new_pin_name] = self.db_gates[mod.original_pin]
+                self.db_gates[mod.original_pin] = self.db_gate(mod.gate, [mod_new_pin_name]+[mod.input_pins])
 
-                self.db_gates[mod.new_pin_name] = self.db_gates[mod.original_pin]
-                self.db_gates[mod.original_pin] = self.db_gate(mod.gate, [mod_new_pin_name]+mod.input_pins)
+    def mod_remove(self):
+        """
+        Modify db_input_pins, db_output_pins, db_node_pins, and db_gates to remove the circuit mods based on
+        db_mods_circuit. db_mods_circuit is a list with elements of modifications of the form,
+
+        [original pin, [pins to other inputs of inserted gate], gate type as string]
+        """
+
+        for mod_num in range(self.db_mods_circuit.mod_num):
+            mod_pin_name = 'M'+str(mod_num+1)
+            original_pin = self.db_mods_circuit.array[mod_num].original_pin
+
+            # If original pin was not an output pin
+            if original_pin not in self.db_output_pins:
+                try:
+                    # If original pin was not an output pin
+                    if original_pin not in self.db_output_pins:
+                        # Remove added mod gate
+                        self.db_gates.pop(mod_pin_name)
+                        # Remove mod pins and relink with original pin to the original gate
+                        for output_pin in self.db_gates:
+                            if mod_pin_name in self.db_gates[output_pin].input_pins:
+                                self.db_gates[output_pin].input_pins = \
+                                    [pin for pin in self.db_gates[output_pin].input_pins if
+                                     pin != mod_pin_name] + [original_pin]
+                except KeyError:
+                    print('Mod number ', mod_num, 'does not match mod array. Please check')
+
+            elif original_pin in self.db_output_pins:
+                try:
+                    # Remove added mod gate
+                    self.db_gates.pop(original_pin)
+                    # Remove mod pin and relink with original pin to the original gate
+                    self.db_gates[original_pin] = self.db_gates[mod_pin_name]
+                    self.db_gates.pop(mod_pin_name)
+                except KeyError:
+                    print('Mod number ', mod_num, 'does not match mod array. Please check')
+
+            # Remove mod pin name from db_input_pins, db_output_pins, and db_node_pins
+            if mod_pin_name in self.db_input_pins:
+                self.db_input_pins.pop(mod_pin_name)
+            if mod_pin_name in self.db_output_pins:
+                self.db_output_pins.pop(mod_pin_name)
+            if mod_pin_name in self.db_node_pins:
+                self.db_node_pins.pop(mod_pin_name)
