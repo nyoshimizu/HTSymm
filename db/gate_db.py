@@ -104,3 +104,7 @@ class GateDB:
                 return 0
             elif inputs == [1]:
                 return 1
+
+        else:
+            raise ValueError("GateDB.gateoutput received gate that resulted " +
+                             "in no return value: " + gate + ".")
