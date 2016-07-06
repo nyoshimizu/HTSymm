@@ -23,7 +23,7 @@ class GateDB:
             self.output_pin = output_pin
             self.input_pin = input_pin
 
-            assert gate in self.names
+            assert gate in GateDB.names
 
     def path_delay(self, gate_list):
         """
@@ -39,3 +39,68 @@ class GateDB:
             print('Error in gate list received for calculating path delay')
 
         return delays
+
+    def gateoutput(self, gate, inputs):
+        """
+        Calculates output value for a given gate for given input values.
+
+        gate: String of gate type; should conform to set of gates GateDB.names.
+        inputs: List of values of input pins.
+
+        Returns outut value.
+        """
+
+        if gate not in GateDB.names:
+            raise ValueError("GateDB.gateoutput received gate type not in " +
+                             "GateDB.names: " + gate)
+
+        elif gate == 'and':
+            if any([input == '0' for input in inputs]):
+                return 0
+            else:
+                return 1
+
+        elif gate == 'nand':
+            if any([input == '0' for input in inputs]):
+                return 1
+            else:
+                return 0
+
+        elif gate == 'or':
+            if any([input == '1' for input in inputs]):
+                return 1
+            else:
+                return 0
+
+        elif gate == 'nor':
+            if any([input == '1' for input in inputs]):
+                return 0
+            else:
+                return 1
+
+        elif gate == 'not':
+            if len(inputs) > 1:
+                raise ValueError("GateDB.gateoutput received more than one " +
+                                 "inputs for a NOT gate.")
+            elif inputs == [0]:
+                return 1
+            elif inputs == [1]:
+                return 0
+
+        elif gate == 'xor':
+            if len(inputs) != 2:
+                raise ValueError("GateDB.gateoutput did not receive two " +
+                                 "inputs for XOR gate: " + len(inputs) + ".")
+            elif 0 in inputs and 1 in inputs:
+                return 1
+            else:
+                return 0
+
+        elif gate == 'buf':
+            if len(inputs) > 1:
+                raise ValueError("GateDB.gateoutput received more than one " +
+                                 "input for BUF gate.")
+            elif inputs == [0]:
+                return 0
+            elif inputs == [1]:
+                return 1
