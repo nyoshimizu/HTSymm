@@ -14,14 +14,17 @@ class GateDB:
         # Key by output pin, value is GateElement object
         self.db = {}
 
+    def add(self, gate, output_pin, input_pins):
+        # Add GateElement to self.db
+        self.db.add(self.GateElement(gate, output_pin, input_pins))
+
     class GateElement:
 
-        def __init__(self, gate, output_pin, input_pin):
-            # input_pin is list of input pins, e.g. ['N1', 'N2', 'N3']
-            # going from starting input pin to final output pin.
+        def __init__(self, gate, output_pin, input_pins):
+            # input_pin is set of input pins
             self.gate = gate
             self.output_pin = output_pin
-            self.input_pin = input_pin
+            self.input_pins = input_pins
 
             assert gate in GateDB.names
 
