@@ -16,14 +16,13 @@ class GateDB:
 
     def add(self, gate, output_pin, input_pins):
         # Add GateElement to self.db
-        self.db.add(self.GateElement(gate, output_pin, input_pins))
+        self.db[output_pin] = self.GateElement(gate, input_pins)
 
     class GateElement:
 
-        def __init__(self, gate, output_pin, input_pins):
+        def __init__(self, gate, input_pins):
             # input_pin is set of input pins
             self.gate = gate
-            self.output_pin = output_pin
             self.input_pins = input_pins
 
             assert gate in GateDB.names
