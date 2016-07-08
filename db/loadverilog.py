@@ -61,9 +61,9 @@ class VerilogDB:
         used_inputs = set()
         new_outputs = {}
 
-#        while self.input_pins != used_pins:
-#            for input in new_inputs:
-#                
+        while used_pins != self.input_pins:
+            for new_input in new_inputs:
+                pass
 
 def load_verilog(circuit):
     """
@@ -194,7 +194,7 @@ class VerilogSQL:
         self.loaded = False
         self.circuit = None
         self.conn = None
-        self.db = VerilogDB()
+        self.VerilogDB = VerilogDB()
 
     def loadfile(self):
         engine = create_engine('sqlite:///db/verilog.sqlite3', echo=False)
@@ -213,9 +213,9 @@ class VerilogSQL:
 
         query = self.conn.execute(sel)
 
-        self.db.input_pins = set()
+        self.VerilogDB.input_pins = set()
         for _, _, pin in query:
-            self.db.input_pins.add(pin)
+            self.VerilogDB.input_pins.add(pin)
 
         query.close()
 
@@ -227,9 +227,9 @@ class VerilogSQL:
 
         query = self.conn.execute(sel)
 
-        self.db.output_pins = set()
+        self.VerilogDB.output_pins = set()
         for _, _, pin in query:
-            self.db.output_pins.add(pin)
+            self.VerilogDB.output_pins.add(pin)
 
         query.close()
 
@@ -242,9 +242,9 @@ class VerilogSQL:
 
         query = self.conn.execute(sel)
 
-        self.db.node_pins = set()
+        self.VerilogDB.node_pins = set()
         for _, _, pin in query:
-            self.db.node_pins.add(pin)
+            self.VerilogDB.node_pins.add(pin)
 
         query.close()
 
@@ -257,13 +257,13 @@ class VerilogSQL:
 
         query = self.conn.execute(sel)
 
-        self.db.gatedb.db = {}
+        self.VerilogDB.gatedb.db = {}
         for (_, _, gate, out_pin, in_pin0, in_pin1, in_pin2, in_pin3, in_pin4,
              in_pin5, in_pin6, in_pin7, in_pin8, in_pin9) in query:
 
             in_pins = [in_pin0, in_pin1, in_pin2, in_pin3, in_pin4,
                        in_pin5, in_pin6, in_pin7, in_pin8, in_pin9]
-            self.db.gatedb.add(gate,
+            self.VerilogDB.gatedb.add(gate,
                                out_pin,
                                [pin for pin in in_pins if pin is not None]
                                )
