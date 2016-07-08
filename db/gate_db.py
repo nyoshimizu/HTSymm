@@ -23,12 +23,10 @@ class GateDB:
         except TypeError:
             print("GateDB __repr__ finds db is not dict type.")
 
-        # Remove nondigit characters from output pins
-        for k in range(len(keylist)):
-            keylist[k] = re.sub("\D", "", keylist[k])
-            keylist[k] = int(keylist[k])
-
-        keylistsorted = sorted(keylist)
+        # Sort output pins (keys) by digits.
+        keylistsorted = sorted(keylist, key=lambda akey:
+                               ''.join(letter for letter in akey
+                                       if letter.isdigit()))
 
         print_repr = ''
 
@@ -40,7 +38,7 @@ class GateDB:
     def add(self, gate, output_pin, input_pins):
 
         # Add GateElement to self.db
-        self.db[output_pin] = self.GateElement(gate, input_pins)
+        self.db[output_pin] = self.GateElement(gate, output_pin, input_pins)
 
     class GateElement:
 
@@ -53,13 +51,18 @@ class GateDB:
             assert gate in GateDB.names
 
         def __repr__(self):
-            return "O: {}, G: {}, I: {}".format(self.output_pin,
-                                                self.gate,
-                                                self.sorted_input_pins())
+            return "O: {}, G: {}, I: {}".format(
+                                         self.output_pin,
+                                         self.gate,
+                                         re.sub("[\[\]']",
+                                                "",
+                                                str(self.sorted_input_pins())
+                                                )
+                                         )
 
         def sorted_input_pins(self):
-            return sorted(self.input_pins, key=lambda number:
-                          int(', '.join(k for k in number if k.isdigit())))
+            return sorted(list(self.input_pins), key=lambda number:
+                          int(''.join(k for k in number if k.isdigit())))
 
     def path_delay(self, gate_list):
         """
