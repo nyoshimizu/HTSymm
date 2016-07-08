@@ -3,6 +3,8 @@ Class definition for gate database. It contains the list of gates and
 relational databases, and defines gate names and their path delays.
 """
 
+import re
+
 
 class GateDB:
 
@@ -14,18 +16,50 @@ class GateDB:
         # Key by output pin, value is GateElement object
         self.db = {}
 
+    def __repr__(self):
+
+        try:
+            keylist = list(self.db.keys())
+        except TypeError:
+            print("GateDB __repr__ finds db is not dict type.")
+
+        # Remove nondigit characters from output pins
+        for k in range(len(keylist)):
+            keylist[k] = re.sub("\D", "", keylist[k])
+            keylist[k] = int(keylist[k])
+
+        keylistsorted = sorted(keylist)
+
+        print_repr = ''
+
+        for key in keylistsorted:
+            print_repr += str(self.db[key]) + "\n"
+
+        return print_repr
+
     def add(self, gate, output_pin, input_pins):
+
         # Add GateElement to self.db
         self.db[output_pin] = self.GateElement(gate, input_pins)
 
     class GateElement:
 
-        def __init__(self, gate, input_pins):
+        def __init__(self, gate, output_pin, input_pins):
             # input_pin is set of input pins
             self.gate = gate
+            self.output_pin = output_pin
             self.input_pins = input_pins
 
             assert gate in GateDB.names
+
+        def __repr__(self):
+            return "O: {}, G: {}, I: {}".format(self.output_pin,
+                                                self.gate,
+                                                self.sorted_input_pins())
+
+        def sorted_input_pins(self):
+            return sorted(self.input_pins, key=lambda number:
+                          int(', '.join(k for k in number if k.isdigit())))
 
     def path_delay(self, gate_list):
         """
