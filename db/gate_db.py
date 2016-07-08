@@ -86,7 +86,7 @@ class GateDB:
         gate: String of gate type; should conform to set of gates GateDB.names.
         inputs: List of values of input pins.
 
-        Returns outut value.
+        Returns output value.
         """
 
         if gate not in GateDB.names:
