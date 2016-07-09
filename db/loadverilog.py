@@ -18,8 +18,7 @@ from sqlalchemy import (
 
 class VerilogDB:
     """
-    Class that stores, analyzes, or manipulates Verilog database of pins,
-    gates, and pin values.
+    Class that stores Verilog database of pins, gates, and pin values.
     """
 
     def __init__(self):
@@ -28,7 +27,7 @@ class VerilogDB:
         self.output_pins = set()
         self.output_pin_values = {}
         self.node_pins = set()
-        self.output_pin_values = {}
+        self.node_pin_values = {}
         self.gatedb = GateDB()
 
     def input_pins_sorted(self):
@@ -43,27 +42,6 @@ class VerilogDB:
         return sorted(self.node_pins, key=lambda number:
                       int(''.join(k for k in number if k.isdigit())))
 
-    def update_pin_values(self):
-        """
-        Starting with circuit input pins, update pin values. Perform
-        iteratively by getting all values that can be calculated from input
-        pins, then calculate new values based on newly calculated pins, etc.
-        Expects self.gatedb to have been loaded from the SQL database.
-
-        Updates self.gatedb rather than return data.
-        """
-        if any([pin for pin in self.input_pins
-                if pin not in self.input_pin_values]):
-            raise ValueError("Error in update_pin_values: not all input pins \
-                have values")
-
-        new_inputs = self.input_pins
-        used_inputs = set()
-        new_outputs = {}
-
-        while used_pins != self.input_pins:
-            for new_input in new_inputs:
-                pass
 
 def load_verilog(circuit):
     """
@@ -150,7 +128,7 @@ def load_verilog(circuit):
 
 class VerilogSQL:
     """
-    Class to access and query verilog SQL database.
+    Class to access and query Verilog SQL database.
     """
 
     metadata = MetaData()
@@ -205,8 +183,7 @@ class VerilogSQL:
         self.conn.close()
         self.loaded = False
 
-    def loadinputpins(self, circuit):
-        self.circuit = circuit
+    def loadinputpins(self):
 
         sel = select([self.input_pins_table]).where(
                      self.input_pins_table.c.circuit == self.circuit)
@@ -219,8 +196,7 @@ class VerilogSQL:
 
         query.close()
 
-    def loadoutputpins(self, circuit):
-        self.circuit = circuit
+    def loadoutputpins(self):
 
         sel = select([self.output_pins_table]).where(
                      self.output_pins_table.c.circuit == self.circuit)
@@ -233,9 +209,7 @@ class VerilogSQL:
 
         query.close()
 
-    def loadnodepins(self, circuit):
-
-        self.circuit = circuit
+    def loadnodepins(self):
 
         sel = select([self.node_pins_table]).where(
                      self.node_pins_table.c.circuit == self.circuit)
@@ -248,9 +222,7 @@ class VerilogSQL:
 
         query.close()
 
-    def loadgates(self, circuit):
-
-        self.circuit = circuit
+    def loadgates(self):
 
         sel = select([self.gates_table]).where(
                       self.gates_table.c.circuit == self.circuit)
@@ -270,7 +242,7 @@ class VerilogSQL:
 
         query.close()
 
-    def readgateswithinputs(self, circuit, input_pins):
+    def readgateswithinputs(self, input_pins):
         """
         Reads from the VerilogSQL file the data from the gates table the
         gates that have input pins that are all in the input_pins passed to
@@ -284,7 +256,7 @@ class VerilogSQL:
         """
         returngatedb = GateDB()
 
-        s_circuit = circuit
+        s_circuit = self.circuit
 
         if len(input_pins) > 10:
             raise ValueError("readgateswithinputs received more than 10 " +
@@ -367,7 +339,65 @@ class VerilogSQL:
         for result in results:
             gate = result[0]
             output_pin = result[1]
-            input_pins = set([pin for pin in result[2:] if pin is not 'None'])
+            input_pins = set([pin for pin in result[2:] if pin != 'None'])
             returngatedb.add(gate, output_pin, input_pins)
 
         return returngatedb
+
+    def update_pin_values(self):
+        """
+        Starting with circuit input pins, update pin values. Perform
+        iteratively by getting all values that can be calculated from input
+        pins, then calculate new values based on newly calculated pins, etc.
+
+        Requires self.gatedb to have been loaded from the SQL database using
+        self.loadfile() and all gate list and pin lists to have been loaded
+        by running self.load self.loadinputpins(), self.loadnodepins(),
+        and self.loadoutputpins() so that results can be distributed at the
+        end.
+
+        Requires self.VerilogDB.input_pin_values to be complete.
+
+        Updates self.gatedb rather than return data.
+        """
+        if any([pin for pin in self.VerilogDB.input_pins
+                if pin not in self.VerilogDB.input_pin_values.keys()]):
+            raise ValueError("Error in update_pin_values: not all input pins \
+                have values")
+
+        node_values = dict()
+        for pin in self.VerilogDB.input_pin_values:
+            node_values[pin] = self.VerilogDB.input_pin_values[pin]
+
+        new_inputs = self.VerilogDB.input_pins
+        used_inputs = set()
+        new_outputs = set()
+
+        while any(new_inputs):
+            for new_input in new_inputs:
+                newgatedb = self.readgateswithinputs(new_inputs)
+                used_inputs |= new_inputs
+                new_outputs = set(newgatedb.db.keys())
+                for new_output in new_outputs:
+                    print('New output: ', new_output)
+                    gate_input_pins = newgatedb.db[new_output].input_pins
+                    print('inputs :', gate_input_pins)
+                    gate_type = newgatedb.db[new_output].gate
+                    print('gate type: ', gate_type)
+                    gate_input_values = [node_values[pin]
+                                         for pin in gate_input_pins]
+                    print('values: ', gate_input_values)
+                    node_values[new_output] = newgatedb.gateoutput(
+                                               gate_type, gate_input_values)
+
+            # Only add to new_inputs if they are not output pins.
+            new_inputs |= new_outputs - self.VerilogDB.output_pins
+
+        for pin in node_values:
+            if pin in self.VerilogDB.node_pins:
+                self.VerilogDB.node_pin_values[pin] = node_values[pin]
+            elif pin in self.VerilogDB.input_pins:
+                self.VerilogDB.input_pin_values[pin] = node_values[pin]
+            elif pin in self.VerilogDB.output_pins:
+                self.VerilogDB.output_pin_values[pin] = node_values[pin]
+        # INFINITE LOOP
