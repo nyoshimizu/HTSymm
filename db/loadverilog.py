@@ -400,4 +400,4 @@ class VerilogSQL:
                 self.VerilogDB.input_pin_values[pin] = node_values[pin]
             elif pin in self.VerilogDB.output_pins:
                 self.VerilogDB.output_pin_values[pin] = node_values[pin]
-        # INFINITE LOOP
+        # INFINITE LOOP!
