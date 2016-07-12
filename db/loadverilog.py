@@ -242,14 +242,16 @@ class VerilogSQL:
 
         query.close()
 
-    def readgateswithinputs(self, input_pins):
+    def readgateswithinputs(self, input_pins, req_input_pins):
         """
         Reads from the VerilogSQL file the data from the gates table the
         gates that have input pins that are all in the input_pins passed to
-        the method.
+        the method, and which must have input pins in the req_input_pins
+        list.
 
         circuit = string of circuit name
         input_pins: set of input pins
+        req_input_pins: set of input pins which must be inputs to gate.
 
         Returns a GateDB.db object of gate elements which adhere to the
         criterion.
@@ -258,22 +260,34 @@ class VerilogSQL:
 
         s_circuit = self.circuit
 
-        if len(input_pins) > 10:
+        if len(input_pins) > 10 or len(req_input_pins) > 10:
             raise ValueError("readgateswithinputs received more than 10 " +
-                             "input pins.")
+                             "input or required input pins.")
+        elif any(input_pins & req_input_pins):
+            raise ValueError("readgateswithinputs received pins that were " +
+                             "in both input_pins and req_input_pins: " +
+                             str(input_pins & req_input_pins))
         else:
-            s_textpins = list(input_pins)+['none']*(10-len(input_pins))
+            s_textinputpins = (list(input_pins) +
+                               ['none']*(10-len(input_pins)))
+            s_textreqinputpins = (list(req_input_pins) +
+                                  ['none']*(10-len(req_input_pins)))
 
         # SQL code to find gates that have all its input pins in a given
-        # set of pins.
+        # set of pins. Assume we have values for N1, N2, N11 and we have new
+        # values for N3 and N4 which must be in the gates we find.
         #
         # select gate, ouput_pin, input_pin0, input_pin1, input_pin2,
         #         input_pin3, input_pin4, input_pin5, input_pin6,
         #         input_pin7, input_pin8, input_pin9
         # from gates
         # where circuit = 'c17'
-        # and (input_pin0 in ('N1', 'N3', 'N2', 'N11') or input_pin0 is null)
-        # and (input_pin1 in ('N1', 'N3', 'N2', 'N11') or input_pin1 is null)
+        # and (input_pin0 in ('N1', 'N2', 'N11', 'N3', 'N4')
+        #                             or input_pin0 is null)
+        # and (input_pin1 in ('N1', 'N2', 'N11', 'N3', 'N4')
+        #                             or input_pin1 is null)
+        # and ('N3' in (input_pin0, input_pin1)
+        # or 'N4' in (input_pin0, input_pin1))
         # ;
 
         # SQLAlchemy does not seem to be able to bind multiple items per param?
@@ -285,40 +299,90 @@ class VerilogSQL:
                    "FROM gates "
                    "WHERE circuit = :textcircuit "
                    "AND (input_pin0 IN (:t0, :t1, :t2, :t3, :t4, :t5, :t6, \
-                         :t7, :t8, :t9) OR input_pin0 IS null) "
+                         :t7, :t8, :t9, :rt0, :rt1, :rt2, :rt3, :rt4, :rt5, \
+                         :rt6, :rt7, :rt8, :rt9) OR input_pin0 IS null) "
                    "AND (input_pin1 IN (:t0, :t1, :t2, :t3, :t4, :t5, :t6, \
-                         :t7, :t8, :t9) OR input_pin1 IS null) "
+                         :t7, :t8, :t9, :rt0, :rt1, :rt2, :rt3, :rt4, :rt5, \
+                         :rt6, :rt7, :rt8, :rt9) OR input_pin1 IS null) "
                    "AND (input_pin2 IN (:t0, :t1, :t2, :t3, :t4, :t5, :t6, \
-                         :t7, :t8, :t9) OR input_pin2 IS null) "
+                         :t7, :t8, :t9, :rt0, :rt1, :rt2, :rt3, :rt4, :rt5, \
+                         :rt6, :rt7, :rt8, :rt9) OR input_pin2 IS null) "
                    "AND (input_pin3 IN (:t0, :t1, :t2, :t3, :t4, :t5, :t6, \
-                         :t7, :t8, :t9) OR input_pin3 IS null) "
+                         :t7, :t8, :t9, :rt0, :rt1, :rt2, :rt3, :rt4, :rt5, \
+                         :rt6, :rt7, :rt8, :rt9) OR input_pin3 IS null) "
                    "AND (input_pin4 IN (:t0, :t1, :t2, :t3, :t4, :t5, :t6, \
-                         :t7, :t8, :t9) OR input_pin4 IS null) "
+                         :t7, :t8, :t9, :rt0, :rt1, :rt2, :rt3, :rt4, :rt5, \
+                         :rt6, :rt7, :rt8, :rt9) OR input_pin4 IS null) "
                    "AND (input_pin5 IN (:t0, :t1, :t2, :t3, :t4, :t5, :t6, \
-                         :t7, :t8, :t9) OR input_pin5 IS null) "
+                         :t7, :t8, :t9, :rt0, :rt1, :rt2, :rt3, :rt4, :rt5, \
+                         :rt6, :rt7, :rt8, :rt9) OR input_pin5 IS null) "
                    "AND (input_pin6 IN (:t0, :t1, :t2, :t3, :t4, :t5, :t6, \
-                         :t7, :t8, :t9) OR input_pin6 IS null) "
+                         :t7, :t8, :t9, :rt0, :rt1, :rt2, :rt3, :rt4, :rt5, \
+                         :rt6, :rt7, :rt8, :rt9) OR input_pin6 IS null) "
                    "AND (input_pin7 IN (:t0, :t1, :t2, :t3, :t4, :t5, :t6, \
-                         :t7, :t8, :t9) OR input_pin7 IS null) "
+                         :t7, :t8, :t9, :rt0, :rt1, :rt2, :rt3, :rt4, :rt5, \
+                         :rt6, :rt7, :rt8, :rt9) OR input_pin7 IS null) "
                    "AND (input_pin8 IN (:t0, :t1, :t2, :t3, :t4, :t5, :t6, \
-                         :t7, :t8, :t9) OR input_pin8 IS null) "
+                         :t7, :t8, :t9, :rt0, :rt1, :rt2, :rt3, :rt4, :rt5, \
+                         :rt6, :rt7, :rt8, :rt9) OR input_pin8 IS null) "
                    "AND (input_pin9 IN (:t0, :t1, :t2, :t3, :t4, :t5, :t6, \
-                         :t7, :t8, :t9) OR input_pin9 IS null) "
+                         :t7, :t8, :t9, :rt0, :rt1, :rt2, :rt3, :rt4, :rt5, \
+                         :rt6, :rt7, :rt8, :rt9) OR input_pin9 IS null) "
+                   "AND (:rt0 IN (input_pin0, input_pin1, input_pin2, \
+                        input_pin3, input_pin4, input_pin5, input_pin6, \
+                        input_pin7, input_pin8, input_pin9) "
+                   "OR :rt1 IN (input_pin0, input_pin1, input_pin2, \
+                        input_pin3, input_pin4, input_pin5, input_pin6, \
+                        input_pin7, input_pin8, input_pin9) "
+                   "OR :rt2 IN (input_pin0, input_pin1, input_pin2, \
+                        input_pin3, input_pin4, input_pin5, input_pin6, \
+                        input_pin7, input_pin8, input_pin9) "
+                   "OR :rt3 IN (input_pin0, input_pin1, input_pin2, \
+                        input_pin3, input_pin4, input_pin5, input_pin6, \
+                        input_pin7, input_pin8, input_pin9) "
+                   "OR :rt4 IN (input_pin0, input_pin1, input_pin2, \
+                        input_pin3, input_pin4, input_pin5, input_pin6, \
+                        input_pin7, input_pin8, input_pin9) "
+                   "OR :rt5 IN (input_pin0, input_pin1, input_pin2, \
+                        input_pin3, input_pin4, input_pin5, input_pin6, \
+                        input_pin7, input_pin8, input_pin9) "
+                   "OR :rt6 IN (input_pin0, input_pin1, input_pin2, \
+                        input_pin3, input_pin4, input_pin5, input_pin6, \
+                        input_pin7, input_pin8, input_pin9) "
+                   "OR :rt7 IN (input_pin0, input_pin1, input_pin2, \
+                        input_pin3, input_pin4, input_pin5, input_pin6, \
+                        input_pin7, input_pin8, input_pin9) "
+                   "OR :rt8 IN (input_pin0, input_pin1, input_pin2, \
+                        input_pin3, input_pin4, input_pin5, input_pin6, \
+                        input_pin7, input_pin8, input_pin9) "
+                   "OR :rt9 IN (input_pin0, input_pin1, input_pin2, \
+                        input_pin3, input_pin4, input_pin5, input_pin6, \
+                        input_pin7, input_pin8, input_pin9)) "
                    ";"
         )
 
         if self.loaded is True:
             SQL_text = SQL_text.bindparams(textcircuit=s_circuit,
-                                           t0=s_textpins[0],
-                                           t1=s_textpins[1],
-                                           t2=s_textpins[2],
-                                           t3=s_textpins[3],
-                                           t4=s_textpins[4],
-                                           t5=s_textpins[5],
-                                           t6=s_textpins[6],
-                                           t7=s_textpins[7],
-                                           t8=s_textpins[8],
-                                           t9=s_textpins[9]
+                                           t0=s_textinputpins[0],
+                                           t1=s_textinputpins[1],
+                                           t2=s_textinputpins[2],
+                                           t3=s_textinputpins[3],
+                                           t4=s_textinputpins[4],
+                                           t5=s_textinputpins[5],
+                                           t6=s_textinputpins[6],
+                                           t7=s_textinputpins[7],
+                                           t8=s_textinputpins[8],
+                                           t9=s_textinputpins[9],
+                                           rt0=s_textreqinputpins[0],
+                                           rt1=s_textreqinputpins[1],
+                                           rt2=s_textreqinputpins[2],
+                                           rt3=s_textreqinputpins[3],
+                                           rt4=s_textreqinputpins[4],
+                                           rt5=s_textreqinputpins[5],
+                                           rt6=s_textreqinputpins[6],
+                                           rt7=s_textreqinputpins[7],
+                                           rt8=s_textreqinputpins[8],
+                                           rt9=s_textreqinputpins[9]
                                            )
 
             query = self.conn.execute(SQL_text)
@@ -349,6 +413,8 @@ class VerilogSQL:
         Starting with circuit input pins, update pin values. Perform
         iteratively by getting all values that can be calculated from input
         pins, then calculate new values based on newly calculated pins, etc.
+        The gives the advantage of not having to load full gate database
+        to calculate pin values.
 
         Requires self.gatedb to have been loaded from the SQL database using
         self.loadfile() and all gate list and pin lists to have been loaded
@@ -369,29 +435,32 @@ class VerilogSQL:
         for pin in self.VerilogDB.input_pin_values:
             node_values[pin] = self.VerilogDB.input_pin_values[pin]
 
+        """
+        At each round,
+        new_inputs: New input pins that should be used to find new gates_table
+        used_inputs: Input pins whose values are already known.
+        new_outputs: New gate output pins whose values can be used in the next
+        round as new_inputs.
+        """
+
         new_inputs = self.VerilogDB.input_pins
         used_inputs = set()
         new_outputs = set()
 
         while any(new_inputs):
-            for new_input in new_inputs:
-                newgatedb = self.readgateswithinputs(new_inputs)
-                used_inputs |= new_inputs
-                new_outputs = set(newgatedb.db.keys())
-                for new_output in new_outputs:
-                    print('New output: ', new_output)
-                    gate_input_pins = newgatedb.db[new_output].input_pins
-                    print('inputs :', gate_input_pins)
-                    gate_type = newgatedb.db[new_output].gate
-                    print('gate type: ', gate_type)
-                    gate_input_values = [node_values[pin]
-                                         for pin in gate_input_pins]
-                    print('values: ', gate_input_values)
-                    node_values[new_output] = newgatedb.gateoutput(
-                                               gate_type, gate_input_values)
-
-            # Only add to new_inputs if they are not output pins.
-            new_inputs |= new_outputs - self.VerilogDB.output_pins
+            newgatedb = self.readgateswithinputs(used_inputs, new_inputs)
+            used_inputs |= new_inputs
+            new_outputs = set(newgatedb.db.keys())
+            # Move new outputs to new inputs for next round if they are not
+            # circuit output pins.
+            new_inputs = new_outputs - self.VerilogDB.output_pins
+            for new_output in new_outputs:
+                gate_input_pins = newgatedb.db[new_output].input_pins
+                gate_type = newgatedb.db[new_output].gate
+                gate_input_values = [node_values[pin]
+                                     for pin in gate_input_pins]
+                node_values[new_output] = newgatedb.gateoutput(
+                                           gate_type, gate_input_values)
 
         for pin in node_values:
             if pin in self.VerilogDB.node_pins:
@@ -400,4 +469,3 @@ class VerilogSQL:
                 self.VerilogDB.input_pin_values[pin] = node_values[pin]
             elif pin in self.VerilogDB.output_pins:
                 self.VerilogDB.output_pin_values[pin] = node_values[pin]
-        # INFINITE LOOP!
