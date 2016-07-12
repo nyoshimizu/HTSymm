@@ -100,19 +100,19 @@ class GateDB:
                 return 1
 
         elif gate == 'nand':
-            if any([input == '0' for input in inputs]):
+            if any([input == 0 for input in inputs]):
                 return 1
             else:
                 return 0
 
         elif gate == 'or':
-            if any([input == '1' for input in inputs]):
+            if any([input == 1 for input in inputs]):
                 return 1
             else:
                 return 0
 
         elif gate == 'nor':
-            if any([input == '1' for input in inputs]):
+            if any([input == 1 for input in inputs]):
                 return 0
             else:
                 return 1
