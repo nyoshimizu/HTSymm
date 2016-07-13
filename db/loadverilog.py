@@ -171,6 +171,7 @@ class VerilogSQL:
     # Define symmpath count SQL table objects.
     symmpath_count_table = Table('symmpath_counts', metadata,
                                  Column('id', Integer, primary_key=True),
+                                 Column('circuit', String),
                                  Column('path_delay', Integer),
                                  Column('num_paths', Integer),
                                  )
@@ -441,15 +442,18 @@ class VerilogSQL:
         # and output_pin = 'N11'
         # ;
 
-        if self.loaded is True:
-            SQL_text = text(
-                            "SELECT * "
-                            "FROM gates "
-                            "WHERE circuit = :textcircuit "
-                            "AND output_pin = :textoutputpin "
-                            ";"
-                            )
+        SQL_text = text(
+                        "SELECT * "
+                        "FROM gates "
+                        "WHERE circuit = :textcircuit "
+                        "AND output_pin = :textoutputpin "
+                        ";"
+                        )
 
+        if self.loaded is True:
+            SQL_text = SQL_text.bindparams(textcircuit=s_circuit,
+                                           textoutputpin=s_outputpin
+                                           )
             query = self.conn.execute(SQL_text)
 
         else:
@@ -463,14 +467,14 @@ class VerilogSQL:
         # Remove single quotes from results
         result = result.replace("'", "")
         # Split into lists
-        results = results.split(', ')
+        result = result.split(', ')
 
         gate = result[0]
         output_pin = result[1]
         input_pins = set([pin for pin in result[2:] if pin != 'None'])
         returngatedb.add(gate, output_pin, input_pins)
 
-    return returngatedb
+        return returngatedb
 
     def update_pin_values(self):
         """
@@ -490,6 +494,7 @@ class VerilogSQL:
 
         Updates self.gatedb rather than return data.
         """
+
         if any([pin for pin in self.VerilogDB.input_pins
                 if pin not in self.VerilogDB.input_pin_values.keys()]):
             raise ValueError("Error in update_pin_values: not all input pins \
@@ -534,7 +539,7 @@ class VerilogSQL:
             elif pin in self.VerilogDB.output_pins:
                 self.VerilogDB.output_pin_values[pin] = node_values[pin]
 
-    def symmpathcountSQL(self, circuit):
+    def symmpathcountSQL(self):
         """
         Using VerilogSQL database, generate and write a SQL db that contains
         the number of paths which have a certain path delay, measured in
@@ -555,8 +560,7 @@ class VerilogSQL:
         they terminate as soon as possible, where they will be added to the
         database and be deleted.
 
-        Writes results to SQL database named "symmpathcount_c17.sqlite3", where
-        here "c17" is the name of the circuit.
+        Writes results to SQL database named "symmpathcount.sqlite3"
         """
 
         symmpaths = dict()
@@ -565,4 +569,56 @@ class VerilogSQL:
             symmpaths[pin] = 0
 
         maxpath = max(symmpaths.values())
-        
+        for key in symmpaths:
+            if symmpaths[key] == maxpath:
+                maxpathpin = key
+
+        outputgatedb = self.readgatewithoutput(maxpathpin)
+
+        gate = outputgatedb.gate
+        input_pins = outputgatedb.input_pins
+
+        new_delay = outputgatedb.path_delay([gate])
+
+        for pin in input_pins:
+            symmpaths[pin] = symmpaths[maxpathpin] + new_delay
+
+        symmpaths.pop(maxpathpin)
+
+        finishedpins = {pin: symmpaths[pin] for pin in symmpaths.keys
+                        if pin in self.VerilogDB.input_pins}
+
+        engine = create_engine('sqlite:///symmpathcount.sqlite3', echo=False)
+
+        metadata.create_all(engine)
+
+        conn = engine.connect()
+
+        for pin in finishedpins:
+
+            new_delay = finishedpins[pin]
+
+            s = select([symmpath_count_table.c.path_delay]).distinct()
+            result = conn.execute(s).fetchall()
+            result = str(result)
+
+            if new_delay in result:
+                pass
+            elif new_delay not in result:
+                insert_SQL = []
+                insert_SQL += [{'circuit': self.circuit,
+                                'path_delay': new_delay,
+                                'num_paths': 1
+                                }]
+
+                conn.execute(self.symmpath_count_table.insert(), insert_SQL)
+
+            
+symmpath_count_table = Table('symmpath_counts', metadata,
+                                 Column('id', Integer, primary_key=True),
+                                 Column('circuit', String)
+                                 Column('path_delay', Integer),
+                                 Column('num_paths', Integer),
+                                 )
+                
+
