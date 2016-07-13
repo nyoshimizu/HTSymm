@@ -133,7 +133,7 @@ class VerilogSQL:
 
     metadata = MetaData()
 
-    # Define SQL table objects.
+    # Define Verilog SQL table objects.
     input_pins_table = Table('input_pins', metadata,
                              Column('id', Integer, primary_key=True),
                              Column('circuit', String),
@@ -167,6 +167,13 @@ class VerilogSQL:
                         Column('input_pin8', String),
                         Column('input_pin9', String),
                         )
+
+    # Define symmpath count SQL table objects.
+    symmpath_count_table = Table('symmpath_counts', metadata,
+                                 Column('id', Integer, primary_key=True),
+                                 Column('path_delay', Integer),
+                                 Column('num_paths', Integer),
+                                 )
 
     def __init__(self):
         self.loaded = False
@@ -249,13 +256,13 @@ class VerilogSQL:
         the method, and which must have input pins in the req_input_pins
         list.
 
-        circuit = string of circuit name
         input_pins: set of input pins
         req_input_pins: set of input pins which must be inputs to gate.
 
         Returns a GateDB.db object of gate elements which adhere to the
         criterion.
         """
+
         returngatedb = GateDB()
 
         s_circuit = self.circuit
@@ -408,6 +415,63 @@ class VerilogSQL:
 
         return returngatedb
 
+    def readgatewithoutput(self, output_pin):
+
+        """
+        Reads from the VerilogSQL file the data from the gates table the
+        gate that has inputoutput pin that is given by the passed
+        output_pin.
+
+        output_pin: output pin desired.
+
+        Returns a GateDB.db object of the gate element which adheres to the
+        criterion.
+        """
+
+        returngatedb = GateDB()
+
+        s_circuit = self.circuit
+        s_outputpin = output_pin
+
+        # SQL code to find gate that has the given output pin in a given.
+        #
+        # select *
+        # from gates
+        # where circuit = 'c17'
+        # and output_pin = 'N11'
+        # ;
+
+        if self.loaded is True:
+            SQL_text = text(
+                            "SELECT * "
+                            "FROM gates "
+                            "WHERE circuit = :textcircuit "
+                            "AND output_pin = :textoutputpin "
+                            ";"
+                            )
+
+            query = self.conn.execute(SQL_text)
+
+        else:
+            raise IOError("SQL file not opened before executing \
+                          readgateswithoutputs")
+
+        result = str(query)
+
+        # Remove parantheses
+        result = result[1:-1]
+        # Remove single quotes from results
+        result = result.replace("'", "")
+        # Split into lists
+        results = results.split(', ')
+
+        gate = result[0]
+        output_pin = result[1]
+        input_pins = set([pin for pin in result[2:] if pin != 'None'])
+        returngatedb.add(gate, output_pin, input_pins)
+
+    return returngatedb
+
     def update_pin_values(self):
         """
         Starting with circuit input pins, update pin values. Perform
@@ -469,3 +533,36 @@ class VerilogSQL:
                 self.VerilogDB.input_pin_values[pin] = node_values[pin]
             elif pin in self.VerilogDB.output_pins:
                 self.VerilogDB.output_pin_values[pin] = node_values[pin]
+
+    def symmpathcountSQL(self, circuit):
+        """
+        Using VerilogSQL database, generate and write a SQL db that contains
+        the number of paths which have a certain path delay, measured in
+        units of single transistor delays.
+
+        Requires self.gatedb to have been loaded from the SQL database using
+        as well as all gate list and pin lists to have been loaded by running
+        self.loadfile(), self.loadgates(), self.loadinputpins(),
+        self.loadnodepins(), and self.loadoutputpins().
+
+        Paths are considered from the circuit output pins towards the circuit
+        input pins. They are stored in a dictionary symmpaths where the key is
+        the next pin closest to the input and the value is the path delay
+        accumulated so far. For each next pin, the next path delay value is
+        added to the table and the key/pin changed.
+
+        Note that the next pins should be added to the longest paths so that
+        they terminate as soon as possible, where they will be added to the
+        database and be deleted.
+
+        Writes results to SQL database named "symmpathcount_c17.sqlite3", where
+        here "c17" is the name of the circuit.
+        """
+
+        symmpaths = dict()
+
+        for pin in self.VerilogDB.output_pins:
+            symmpaths[pin] = 0
+
+        maxpath = max(symmpaths.values())
+        
