@@ -3,6 +3,7 @@ Load verilog code and return its contents as a verilog db class, defined below.
 """
 
 import mmap
+import re
 from db.gate_db import GateDB
 from sqlalchemy import (
     Table,
@@ -131,27 +132,28 @@ class VerilogSQL:
     Class to access and query Verilog SQL database.
     """
 
-    metadata = MetaData()
-
     # Define Verilog SQL table objects.
-    input_pins_table = Table('input_pins', metadata,
+
+    metadataVerilog = MetaData()
+
+    input_pins_table = Table('input_pins', metadataVerilog,
                              Column('id', Integer, primary_key=True),
                              Column('circuit', String),
                              Column('input_pin', String)
                              )
 
-    output_pins_table = Table('output_pins', metadata,
+    output_pins_table = Table('output_pins', metadataVerilog,
                               Column('id', Integer, primary_key=True),
                               Column('circuit', String),
                               Column('output_pin', String)
                               )
 
-    node_pins_table = Table('node_pins', metadata,
+    node_pins_table = Table('node_pins', metadataVerilog,
                             Column('id', Integer, primary_key=True),
                             Column('circuit', String),
                             Column('node_pin', String)
                             )
-    gates_table = Table('gates', metadata,
+    gates_table = Table('gates', metadataVerilog,
                         Column('id', Integer, primary_key=True),
                         Column('circuit', String),
                         Column('gate', String),
@@ -169,9 +171,13 @@ class VerilogSQL:
                         )
 
     # Define symmpath count SQL table objects.
-    symmpath_count_table = Table('symmpath_counts', metadata,
+
+    metadatasymmpathcount = MetaData()
+
+    symmpath_count_table = Table('symmpath_counts', metadatasymmpathcount,
                                  Column('id', Integer, primary_key=True),
                                  Column('circuit', String),
+                                 Column('pin', String),
                                  Column('path_delay', Integer),
                                  Column('num_paths', Integer),
                                  )
@@ -183,8 +189,11 @@ class VerilogSQL:
         self.VerilogDB = VerilogDB()
 
     def loadfile(self):
-        engine = create_engine('sqlite:///db/verilog.sqlite3', echo=False)
-        self.conn = engine.connect()
+        self.engineVerilog = create_engine(
+                              'sqlite:///db/verilog.sqlite3', echo=False)
+        self.metadataVerilog.bind = self.engineVerilog
+        self.metadataVerilog.create_all(checkfirst=True)
+        self.conn = self.engineVerilog.connect()
         self.loaded = True
 
     def closefile(self):
@@ -399,14 +408,7 @@ class VerilogSQL:
             raise IOError("SQL file not opened before executing \
                           readgateswithinputs")
 
-        results = [str(r) for r in query]
-        for k in range(len(results)):
-            # Remove parantheses
-            results[k] = results[k][1:-1]
-            # Remove single quotes from results
-            results[k] = results[k].replace("'", "")
-            # Split into lists
-            results[k] = results[k].split(', ')
+        results = self.parse_SQL_query(query)
 
         for result in results:
             gate = result[0]
@@ -460,18 +462,19 @@ class VerilogSQL:
             raise IOError("SQL file not opened before executing \
                           readgateswithoutputs")
 
-        result = str(query)
+        # Only one line from SQL query should have returned.
+        for line in query:
+            result = line
 
-        # Remove parantheses
-        result = result[1:-1]
-        # Remove single quotes from results
-        result = result.replace("'", "")
-        # Split into lists
-        result = result.split(', ')
+        # Remove parantheses and single quotes from results
+        result = self.parse_SQL_query(result)
 
-        gate = result[0]
-        output_pin = result[1]
-        input_pins = set([pin for pin in result[2:] if pin != 'None'])
+        # result[0] is ID
+        # result[1] is circuit
+        gate = result[2]
+        output_pin = result[3]
+        input_pins = set([pin for pin in result[4:] if pin != 'None'])
+
         returngatedb.add(gate, output_pin, input_pins)
 
         return returngatedb
@@ -552,73 +555,135 @@ class VerilogSQL:
 
         Paths are considered from the circuit output pins towards the circuit
         input pins. They are stored in a dictionary symmpaths where the key is
-        the next pin closest to the input and the value is the path delay
-        accumulated so far. For each next pin, the next path delay value is
-        added to the table and the key/pin changed.
+        the next pin closest to the input and the value is a list of the path
+        delays accumulated so far (accounting for multipule paths due to fan
+        out). For each next pin, the next path delay value is added to the
+        table and the key/pin changed.
 
         Note that the next pins should be added to the longest paths so that
         they terminate as soon as possible, where they will be added to the
         database and be deleted.
 
         Writes results to SQL database named "symmpathcount.sqlite3"
+        If the circuit name already exists in the SQL file, the program will
+        return without runing.
         """
+
+        #enginesymmpathcount = create_engine(
+        #                      'sqlite:///db/symmpathcount.sqlite3', echo=True)
+        #self.metadatasymmpathcount.bind = enginesymmpathcount
+        #self.metadatasymmpathcount.create_all(checkfirst=True)
+        #conn = enginesymmpathcount.connect()
 
         symmpaths = dict()
 
         for pin in self.VerilogDB.output_pins:
-            symmpaths[pin] = 0
+            symmpaths[pin] = [0]
 
-        maxpath = max(symmpaths.values())
-        for key in symmpaths:
-            if symmpaths[key] == maxpath:
-                maxpathpin = key
+        while any(symmpaths):
 
-        outputgatedb = self.readgatewithoutput(maxpathpin)
+            maxpath = max(symmpaths.values())
+            for key in symmpaths:
+                if symmpaths[key] == maxpath:
+                    maxpathpin = key
 
-        gate = outputgatedb.gate
-        input_pins = outputgatedb.input_pins
+            extendpin = maxpathpin
 
-        new_delay = outputgatedb.path_delay([gate])
+            outputgatedb = self.readgatewithoutput(extendpin)
 
-        for pin in input_pins:
-            symmpaths[pin] = symmpaths[maxpathpin] + new_delay
+            gate = outputgatedb.db[extendpin].gate
+            input_pins = outputgatedb.db[extendpin].input_pins
 
-        symmpaths.pop(maxpathpin)
+            old_delays = symmpaths[extendpin]
+            new_delay = outputgatedb.path_delay([gate])
 
-        finishedpins = {pin: symmpaths[pin] for pin in symmpaths.keys
-                        if pin in self.VerilogDB.input_pins}
+            for pin in input_pins:
+                if pin in symmpaths.keys():
+                    symmpaths[pin] = (
+                        [old_delay + new_delay for old_delay in old_delays]
+                        + symmpaths[pin]
+                     )
+                elif pin not in symmpaths.keys():
+                    symmpaths[pin] = (
+                        [old_delay + new_delay for old_delay in old_delays]
+                    )
 
-        engine = create_engine('sqlite:///symmpathcount.sqlite3', echo=False)
+            symmpaths.pop(extendpin)
 
-        metadata.create_all(engine)
+            finishedpaths = {pin: symmpaths[pin] for pin in symmpaths.keys()
+                             if pin in self.VerilogDB.input_pins}
 
-        conn = engine.connect()
+            enginesymmpathcount = create_engine(
+                      'sqlite:///db/symmpathcount.sqlite3', echo=True)
+            self.metadatasymmpathcount.bind = enginesymmpathcount
+            self.metadatasymmpathcount.create_all(checkfirst=True)
+            conn = enginesymmpathcount.connect()
 
-        for pin in finishedpins:
+            for pin in finishedpaths.keys():
 
-            new_delay = finishedpins[pin]
+                new_delays = finishedpaths[pin]
 
-            s = select([symmpath_count_table.c.path_delay]).distinct()
-            result = conn.execute(s).fetchall()
-            result = str(result)
+                sel = select([self.symmpath_count_table])
+                sel = sel.where(
+                    self.symmpath_count_table.c.circuit == self.circuit
+                )
+                results = conn.execute(sel).fetchall()
 
-            if new_delay in result:
-                pass
-            elif new_delay not in result:
-                insert_SQL = []
-                insert_SQL += [{'circuit': self.circuit,
-                                'path_delay': new_delay,
-                                'num_paths': 1
-                                }]
+                results = [self.parse_SQL_query(line) for line in results]
 
-                conn.execute(self.symmpath_count_table.insert(), insert_SQL)
+                for line in results:
+                    print('!:', line)
 
-            
-symmpath_count_table = Table('symmpath_counts', metadata,
-                                 Column('id', Integer, primary_key=True),
-                                 Column('circuit', String)
-                                 Column('path_delay', Integer),
-                                 Column('num_paths', Integer),
-                                 )
-                
+                for new_delay in new_delays:
+                    print('asdf: ', new_delay)
+                    if pin in results:
+                        SQL_update = self.symmpath_count_table
+                        SQL_update = SQL_update.update(
+                                      self.symmpath_count_table
+                        )
+                        SQL_update = SQL_update.values(
+                            num_paths = num_paths + 1
+                        )
+                        SQL_update = SQL_update.where(
+                            self.symmpath_count_table.c.pin == pin
+                        )
+                        conn.execute(SQL_update)
 
+                    elif pin not in results:
+                        SQL_insert = self.symmpath_count_table
+                        SQL_insert = SQL_insert.insert()
+                        SQL_insert = SQL_insert.values(
+                                      {'circuit': self.circuit,
+                                       'pin': pin,
+                                       'path_delay': new_delay,
+                                       'num_paths': 1
+                                       })
+                        print('insert')
+                        conn.execute(SQL_insert)
+
+            for pin in finishedpaths.keys():
+                symmpaths.pop(pin)
+
+            conn.close()
+
+    def parse_SQL_query(self, result):
+        """
+        Parse SQL query results. Results come in the form of:
+        (1, 'c17', 'N2', 2, 1, None, ...)
+
+        This method will parse and return in list form, removing the single
+        parentheses and converting strings to integers if appropriate.
+        """
+
+        return_result = re.sub("[()']",
+                               "",
+                               str(result)
+                               )
+        # Split into lists
+        return_result = return_result.split(', ')
+
+        for k in return_result:
+            if k.isdigit():
+                k = int(k)
+
+        return return_result
