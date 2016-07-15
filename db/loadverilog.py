@@ -569,11 +569,21 @@ class VerilogSQL:
         return without runing.
         """
 
-        #enginesymmpathcount = create_engine(
-        #                      'sqlite:///db/symmpathcount.sqlite3', echo=True)
-        #self.metadatasymmpathcount.bind = enginesymmpathcount
-        #self.metadatasymmpathcount.create_all(checkfirst=True)
-        #conn = enginesymmpathcount.connect()
+        enginesymmpathcount = create_engine(
+                              'sqlite:///db/symmpathcount.sqlite3', echo=False)
+        self.metadatasymmpathcount.bind = enginesymmpathcount
+        self.metadatasymmpathcount.create_all(checkfirst=True)
+        conn = enginesymmpathcount.connect()
+        sel = select([self.symmpath_count_table])
+        sel = sel.where(self.symmpath_count_table.c.circuit == self.circuit)
+        results = conn.execute(sel).fetchall()
+
+        conn.close()
+
+        if results:
+            print("symmpathcountSQL tried analyzing circuit that is already " +
+                  "in database; will not run.")
+            return
 
         symmpaths = dict()
 
@@ -614,7 +624,7 @@ class VerilogSQL:
                              if pin in self.VerilogDB.input_pins}
 
             enginesymmpathcount = create_engine(
-                      'sqlite:///db/symmpathcount.sqlite3', echo=True)
+                      'sqlite:///db/symmpathcount.sqlite3', echo=False)
             self.metadatasymmpathcount.bind = enginesymmpathcount
             self.metadatasymmpathcount.create_all(checkfirst=True)
             conn = enginesymmpathcount.connect()
@@ -631,11 +641,7 @@ class VerilogSQL:
 
                 results = [self.parse_SQL_query(line) for line in results]
 
-                for line in results:
-                    print('!:', line)
-
                 for new_delay in new_delays:
-                    print('asdf: ', new_delay)
                     if pin in results:
                         SQL_update = self.symmpath_count_table
                         SQL_update = SQL_update.update(
@@ -658,7 +664,7 @@ class VerilogSQL:
                                        'path_delay': new_delay,
                                        'num_paths': 1
                                        })
-                        print('insert')
+
                         conn.execute(SQL_insert)
 
             for pin in finishedpaths.keys():
@@ -675,13 +681,15 @@ class VerilogSQL:
         parentheses and converting strings to integers if appropriate.
         """
 
+        # Remove parantheses and single quotes.
         return_result = re.sub("[()']",
                                "",
                                str(result)
                                )
-        # Split into lists
+        # Split into lists.
         return_result = return_result.split(', ')
 
+        # Convert strings to integers, if appropriate.
         for k in return_result:
             if k.isdigit():
                 k = int(k)
