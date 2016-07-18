@@ -561,12 +561,12 @@ class VerilogSQL:
         table and the key/pin changed.
 
         Note that the next pins should be added to the longest paths so that
-        they terminate as soon as possible, where they will be added to the
-        database and be deleted.
+        they terminate as soon as possible, where they will be moved to the
+        database.
 
         Writes results to SQL database named "symmpathcount.sqlite3"
         If the circuit name already exists in the SQL file, the program will
-        return without runing.
+        return without running.
         """
 
         enginesymmpathcount = create_engine(
@@ -574,21 +574,20 @@ class VerilogSQL:
         self.metadatasymmpathcount.bind = enginesymmpathcount
         self.metadatasymmpathcount.create_all(checkfirst=True)
         conn = enginesymmpathcount.connect()
-        sel = select([self.symmpath_count_table])
+        sel = select([self.symmpath_count_table.c.circuit])
         sel = sel.where(self.symmpath_count_table.c.circuit == self.circuit)
         results = conn.execute(sel).fetchall()
 
-        conn.close()
-
-        if results:
+        if self.circuit in results:
             print("symmpathcountSQL tried analyzing circuit that is already " +
                   "in database; will not run.")
             return
 
         symmpaths = dict()
-
         for pin in self.VerilogDB.output_pins:
             symmpaths[pin] = [0]
+
+        finishedpaths = {}
 
         while any(symmpaths):
 
@@ -600,12 +599,11 @@ class VerilogSQL:
             extendpin = maxpathpin
 
             outputgatedb = self.readgatewithoutput(extendpin)
-
             gate = outputgatedb.db[extendpin].gate
             input_pins = outputgatedb.db[extendpin].input_pins
 
-            old_delays = symmpaths[extendpin]
             new_delay = outputgatedb.path_delay([gate])
+            old_delays = symmpaths[extendpin]
 
             for pin in input_pins:
                 if pin in symmpaths.keys():
@@ -620,57 +618,63 @@ class VerilogSQL:
 
             symmpaths.pop(extendpin)
 
-            finishedpaths = {pin: symmpaths[pin] for pin in symmpaths.keys()
-                             if pin in self.VerilogDB.input_pins}
+            new_finishedpaths = {pin: symmpaths[pin]
+                                 for pin in symmpaths.keys()
+                                 if pin in self.VerilogDB.input_pins
+                                 }
 
-            enginesymmpathcount = create_engine(
-                      'sqlite:///db/symmpathcount.sqlite3', echo=False)
-            self.metadatasymmpathcount.bind = enginesymmpathcount
-            self.metadatasymmpathcount.create_all(checkfirst=True)
-            conn = enginesymmpathcount.connect()
+            for pin in new_finishedpaths.keys():
+                if pin in finishedpaths.keys():
+                    finishedpaths[pin] = (finishedpaths[pin] +
+                                          new_finishedpaths[pin]
+                                          )
+                elif pin not in finishedpaths.keys():
+                    finishedpaths[pin] = new_finishedpaths[pin]
 
-            for pin in finishedpaths.keys():
-
-                new_delays = finishedpaths[pin]
-
-                sel = select([self.symmpath_count_table])
-                sel = sel.where(
-                    self.symmpath_count_table.c.circuit == self.circuit
-                )
-                results = conn.execute(sel).fetchall()
-
-                results = [self.parse_SQL_query(line) for line in results]
-
-                for new_delay in new_delays:
-                    if pin in results:
-                        SQL_update = self.symmpath_count_table
-                        SQL_update = SQL_update.update(
-                                      self.symmpath_count_table
-                        )
-                        SQL_update = SQL_update.values(
-                            num_paths = num_paths + 1
-                        )
-                        SQL_update = SQL_update.where(
-                            self.symmpath_count_table.c.pin == pin
-                        )
-                        conn.execute(SQL_update)
-
-                    elif pin not in results:
-                        SQL_insert = self.symmpath_count_table
-                        SQL_insert = SQL_insert.insert()
-                        SQL_insert = SQL_insert.values(
-                                      {'circuit': self.circuit,
-                                       'pin': pin,
-                                       'path_delay': new_delay,
-                                       'num_paths': 1
-                                       })
-
-                        conn.execute(SQL_insert)
-
-            for pin in finishedpaths.keys():
+            for pin in new_finishedpaths.keys():
                 symmpaths.pop(pin)
 
-            conn.close()
+            if len(finishedpaths) > 1000 or len(symmpaths) == 0:
+                for pin in finishedpaths.keys():
+
+                    new_delays = finishedpaths[pin]
+
+                    sel = select([self.symmpath_count_table])
+                    sel = sel.where(
+                        self.symmpath_count_table.c.circuit == self.circuit
+                    )
+                    results = conn.execute(sel).fetchall()
+
+                    results = [self.parse_SQL_query(line) for line in results]
+
+                    for new_delay in new_delays:
+                        if pin in results:
+                            SQL_update = self.symmpath_count_table
+                            SQL_update = SQL_update.update(
+                                          self.symmpath_count_table
+                            )
+                            SQL_update = SQL_update.values(
+                                          num_paths = num_paths + 1
+                            )
+                            SQL_update = SQL_update.where(
+                                self.symmpath_count_table.c.pin == pin
+                            )
+                            conn.execute(SQL_update)
+
+                        elif pin not in results:
+                            SQL_insert = self.symmpath_count_table
+                            SQL_insert = SQL_insert.insert()
+                            SQL_insert = SQL_insert.values(
+                                          {'circuit': self.circuit,
+                                           'pin': pin,
+                                           'path_delay': new_delay,
+                                           'num_paths': 1
+                                           })
+
+                            conn.execute(SQL_insert)
+                finishedpaths = {}
+
+        conn.close()
 
     def parse_SQL_query(self, result):
         """
