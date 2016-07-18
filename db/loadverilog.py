@@ -578,10 +578,11 @@ class VerilogSQL:
         sel = sel.where(self.symmpath_count_table.c.circuit == self.circuit)
         results = conn.execute(sel).fetchall()
 
-        if self.circuit in results:
-            print("symmpathcountSQL tried analyzing circuit that is already " +
-                  "in database; will not run.")
-            return
+        for line in results:
+            if self.circuit in str(line):
+                print("symmpathcountSQL tried analyzing circuit that is " +
+                      "already in database; will not run.")
+                return
 
         symmpaths = dict()
         for pin in self.VerilogDB.output_pins:
