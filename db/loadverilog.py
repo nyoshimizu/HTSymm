@@ -660,8 +660,6 @@ class VerilogSQL:
 
                     new_delays = finishedpaths[pin]
 
-                    print("new_delays: ", new_delays)
-                    
                     sel = select([self.symmpath_count_table])
                     sel = sel.where(
                         self.symmpath_count_table.c.circuit == self.circuit
@@ -674,8 +672,6 @@ class VerilogSQL:
 
                     results = [self.parse_SQL_query(line) for line in results]
 
-                    print("found results: ", results)
-                    
                     for new_delay in list(set(new_delays)):
                         if pin in [result[2] for result in results]:
                             SQL_update = self.symmpath_count_table
