@@ -676,13 +676,11 @@ class VerilogSQL:
                         if pin in [result[2] for result in results]:
                             SQL_update = self.symmpath_count_table
                             SQL_update = SQL_update.update(
-                                          self.symmpath_count_table
-                            )
-                            SQL_update = SQL_update.values(
-                                          num_paths = (
-                                              num_paths +
-                                              new_delays.count(new_delay)
-                                          )
+                                self.symmpath_count_table,
+                                values={self.symmpath_count_table.c.num_paths:
+                                        self.symmpath_count_table.c.num_paths +
+                                        new_delays.count(new_delay)
+                                        }
                             )
                             SQL_update = SQL_update.where(
                                 self.symmpath_count_table.c.pin == pin
