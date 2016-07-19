@@ -10,7 +10,7 @@ class GateDB:
 
     names = {'and', 'nand', 'or', 'nor', 'not', 'xor', 'buf'}
     delays = {'nand': 1, 'nor': 1, 'xor': 1, 'not': 1,
-              'and': 1, 'or': 1, 'buf': 1}
+              'and': 2, 'or': 2, 'buf': 2}
 
     def __init__(self):
         # Key by output pin, value is GateElement object
