@@ -660,36 +660,52 @@ class VerilogSQL:
 
                     new_delays = finishedpaths[pin]
 
+                    print("new_delays: ", new_delays)
+                    
                     sel = select([self.symmpath_count_table])
                     sel = sel.where(
                         self.symmpath_count_table.c.circuit == self.circuit
                     )
+                    sel = sel.where(
+                        self.symmpath_count_table.c.pin == pin
+                    )
+
                     results = conn.execute(sel).fetchall()
 
                     results = [self.parse_SQL_query(line) for line in results]
 
-                    for new_delay in new_delays:
-                        if pin in results:
+                    print("found results: ", results)
+                    
+                    for new_delay in list(set(new_delays)):
+                        if pin in [result[2] for result in results]:
                             SQL_update = self.symmpath_count_table
                             SQL_update = SQL_update.update(
                                           self.symmpath_count_table
                             )
                             SQL_update = SQL_update.values(
-                                          num_paths = num_paths + 1
+                                          num_paths = (
+                                              num_paths +
+                                              new_delays.count(new_delay)
+                                          )
                             )
                             SQL_update = SQL_update.where(
                                 self.symmpath_count_table.c.pin == pin
                             )
+                            SQL_update = SQL_update.where(
+                                (self.symmpath_count_table.c.circuit ==
+                                 self.circuit)
+                            )
                             conn.execute(SQL_update)
 
-                        elif pin not in results:
+                        elif pin not in [result[2] for result in results]:
                             SQL_insert = self.symmpath_count_table
                             SQL_insert = SQL_insert.insert()
                             SQL_insert = SQL_insert.values(
                                           {'circuit': self.circuit,
                                            'pin': pin,
                                            'path_delay': new_delay,
-                                           'num_paths': 1
+                                           'num_paths':
+                                           new_delays.count(new_delay)
                                            })
 
                             conn.execute(SQL_insert)
