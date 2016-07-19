@@ -564,6 +564,14 @@ class VerilogSQL:
         they terminate as soon as possible, where they will be moved to the
         database.
 
+        Note that this assumes a circuit topology free of feedback loops, such
+        as those which appear in flip-flop structures. In that case, the
+        flip-flops should be expressed in the Verilog code as flip-flops,
+        then evaluated as a special case, rather than expressed in its
+        primitive XOR gates, etc. (which would not see the feedback loop).
+        Otherwise, loops will cause this method to find path lengths which
+        are infinite in length and thus cause an infinite loop.
+
         Writes results to SQL database named "symmpathcount.sqlite3"
         If the circuit name already exists in the SQL file, the program will
         return without running.
@@ -590,7 +598,16 @@ class VerilogSQL:
 
         finishedpaths = {}
 
+        count = 0
         while any(symmpaths):
+
+            count += 1
+            if count % 4096 == 0:
+                print("count: ", count)
+                print("symmpath size: ",
+                      sum([len(symmpath) for symmpath in symmpaths.values()])
+                      )
+                print()
 
             maxpath = max(symmpaths.values())
             for key in symmpaths:
@@ -635,7 +652,10 @@ class VerilogSQL:
             for pin in new_finishedpaths.keys():
                 symmpaths.pop(pin)
 
-            if len(finishedpaths) > 1000 or len(symmpaths) == 0:
+            if (sum([len(finishedpath) for finishedpath
+                     in finishedpaths.values()]) > 10000 or
+                     len(symmpaths) == 0):
+
                 for pin in finishedpaths.keys():
 
                     new_delays = finishedpaths[pin]
