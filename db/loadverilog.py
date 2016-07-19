@@ -467,7 +467,10 @@ class VerilogSQL:
             result = line
 
         # Remove parantheses and single quotes from results
-        result = self.parse_SQL_query(result)
+        if not result:
+            raise ValueError("findgatewithouputs did not return gate.")
+        else:
+            result = self.parse_SQL_query(result)
 
         # result[0] is ID
         # result[1] is circuit
@@ -654,7 +657,7 @@ class VerilogSQL:
 
             if (sum([len(finishedpath) for finishedpath
                      in finishedpaths.values()]) > 10000 or
-                     len(symmpaths) == 0):
+                     not symmpaths):
 
                 for pin in finishedpaths.keys():
 
@@ -673,7 +676,7 @@ class VerilogSQL:
                     results = [self.parse_SQL_query(line) for line in results]
 
                     for new_delay in list(set(new_delays)):
-                        if pin in [result[2] for result in results]:
+                        if new_delay in [int(result[3]) for result in results]:
                             SQL_update = self.symmpath_count_table
                             SQL_update = SQL_update.update(
                                 self.symmpath_count_table,
@@ -683,15 +686,20 @@ class VerilogSQL:
                                         }
                             )
                             SQL_update = SQL_update.where(
-                                self.symmpath_count_table.c.pin == pin
-                            )
-                            SQL_update = SQL_update.where(
                                 (self.symmpath_count_table.c.circuit ==
                                  self.circuit)
                             )
+                            SQL_update = SQL_update.where(
+                                self.symmpath_count_table.c.pin == pin
+                            )
+                            SQL_update = SQL_update.where(
+                                (self.symmpath_count_table.c.path_delay ==
+                                 new_delay)
+                            )
                             conn.execute(SQL_update)
 
-                        elif pin not in [result[2] for result in results]:
+                        elif (new_delay not in
+                              [int(result[3]) for result in results]):
                             SQL_insert = self.symmpath_count_table
                             SQL_insert = SQL_insert.insert()
                             SQL_insert = SQL_insert.values(
