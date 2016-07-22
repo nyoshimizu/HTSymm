@@ -147,3 +147,59 @@ class GateDB:
         else:
             raise ValueError("GateDB.gateoutput received gate that resulted " +
                              "in no return value: " + gate + ".")
+
+    def delay_def_value(self, gate, output_value):
+        """
+        Calculates input values that define the delay for a gate with certain
+        output value.
+
+        gate is String of gate type under consideration.
+        output_value is Integer of output value of gate under consideration.
+
+        Returns 2-tupule consisting of:
+        - Set of integers (0 or 1) which is input value which indicate the
+        delay-defining input pins
+        - String ('any' or 'all') indicating whether any or all input pins
+        must be set to define the delay.
+        """
+
+        if gate not in GateDB.names:
+            raise ValueError("GateDB.delay_def_value received gate type not " +
+                             "in GateDB.names: " + gate)
+
+        elif gate == 'and':
+            if output_value == 1:
+                return ({1}, 'all')
+            else:
+                return ({0}, 'any')
+
+        elif gate == 'nand':
+            if output_value == 1:
+                return ({0}, 'any')
+            else:
+                return ({1}, 'all')
+
+        elif gate == 'or':
+            if output_value == 1:
+                return ({1}, 'any')
+            else:
+                return ({0}, 'all')
+
+        elif gate == 'nor':
+            if output_value == 1:
+                return ({0}, 'all')
+            else:
+                return ({1}, 'any')
+
+        elif gate == 'not':
+            return ({0, 1}, 'all')
+
+        elif gate == 'xor':
+            return ({0, 1}, 'all')
+
+        elif gate == 'buf':
+            return ({0, 1}, 'all')
+
+        else:
+            raise ValueError("GateDB.delay_def_value received gate type " +
+                             "that resulted in no return value: " + gate + ".")
